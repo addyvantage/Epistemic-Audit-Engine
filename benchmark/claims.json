@@ -1,0 +1,22 @@
+[
+    {
+        "claim_id": "claim_001_A",
+        "doc_id": "doc_001",
+        "text": "SpaceX was founded in 2002"
+    },
+    {
+        "claim_id": "claim_001_B",
+        "doc_id": "doc_001",
+        "text": "Elon Musk founded SpaceX"
+    },
+    {
+        "claim_id": "claim_003_A",
+        "doc_id": "doc_003",
+        "text": "Steve Jobs invented the internet"
+    },
+    {
+        "claim_id": "claim_003_B",
+        "doc_id": "doc_003",
+        "text": "Steve Jobs sold 50 billion units"
+    }
+]

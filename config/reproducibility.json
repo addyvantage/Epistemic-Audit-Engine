@@ -1,0 +1,13 @@
+{
+    "reproducibility": {
+        "deterministic": true,
+        "fixed_seed": 42,
+        "cache_evidence": true
+    },
+    "ablation": {
+        "disable_nli": false,
+        "disable_cross_claim": false,
+        "disable_overconfidence": false,
+        "disable_canonical_override": false
+    }
+}

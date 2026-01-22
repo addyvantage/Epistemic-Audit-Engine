@@ -1,0 +1,31 @@
+[
+    {
+        "claim_id": "claim_001_A",
+        "expected_verdict": "SUPPORTED",
+        "expected_hallucination_types": [],
+        "justification": "Correct temporal fact supported by Wikidata."
+    },
+    {
+        "claim_id": "claim_001_B",
+        "expected_verdict": "SUPPORTED",
+        "expected_hallucination_types": [],
+        "justification": "Correct relation supported by Wikidata."
+    },
+    {
+        "claim_id": "claim_003_A",
+        "expected_verdict": "REFUTED",
+        "expected_hallucination_types": [
+            "H2"
+        ],
+        "justification": "False attribution. Internet invention attributed to others. H2 due to year specificity 1965."
+    },
+    {
+        "claim_id": "claim_003_B",
+        "expected_verdict": "INSUFFICIENT_EVIDENCE",
+        "expected_hallucination_types": [
+            "H2",
+            "H1"
+        ],
+        "justification": "Fabricated numeric specificity (H2) without evidence (H1)."
+    }
+]

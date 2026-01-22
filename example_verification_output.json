@@ -1,0 +1,230 @@
+{
+  "claims": [
+    {
+      "claim_id": "ac8648e5-6701-5e39-a157-b59f473cc43c",
+      "sentence_id": 0,
+      "claim_text": "Steve Jobs founded Apple",
+      "subject": "Steve Jobs",
+      "predicate": "founded",
+      "object": "Apple",
+      "confidence_linguistic": {
+        "hedging": 0.0,
+        "absolutism": 0.0,
+        "temporal_specificity": 1.0,
+        "modal_strength": 1.0
+      },
+      "claim_type": "RELATION",
+      "raw_sentence": "Steve Jobs founded Apple in 1976 and later served as CEO.",
+      "is_derived": false,
+      "subject_entity": {
+        "text": "Steve Jobs",
+        "entity_id": "Q19837",
+        "canonical_name": "Steve Jobs",
+        "entity_type": "PERSON",
+        "sources": {
+          "wikidata": "Q19837",
+          "wikipedia": "https://www.wikidata.org/wiki/Q19837",
+          "grokipedia": "https://grokipedia.com/page/Steve_Jobs"
+        },
+        "confidence": 1.0,
+        "resolution_status": "RESOLVED"
+      },
+      "object_entity": {
+        "text": "Apple",
+        "entity_id": "Q312",
+        "canonical_name": "Apple Inc.",
+        "entity_type": "ORG",
+        "sources": {
+          "wikidata": "Q312",
+          "wikipedia": "https://www.wikidata.org/wiki/Q312",
+          "grokipedia": "https://grokipedia.com/page/Apple_Inc."
+        },
+        "confidence": 0.8,
+        "resolution_status": "RESOLVED"
+      },
+      "evidence": {
+        "wikidata": [
+          {
+            "source": "WIKIDATA",
+            "entity_id": "Q312",
+            "property": "P571",
+            "value": "+1976-04-01T00:00:00Z",
+            "qualifiers": {},
+            "alignment": {
+              "subject_match": true,
+              "predicate_match": true,
+              "object_match": false,
+              "temporal_match": false
+            },
+            "evidence_id": "154c8366-6b8a-5cc5-a382-1ba5c3ca1478"
+          }
+        ],
+        "wikipedia": [],
+        "grokipedia": []
+      },
+      "evidence_status": {
+        "wikidata": "FOUND",
+        "wikipedia": "NOT_FOUND",
+        "grokipedia": "SKIPPED"
+      },
+      "verification": {
+        "verdict": "SUPPORTED",
+        "confidence": 0.85,
+        "used_evidence_ids": [
+          "154c8366-6b8a-5cc5-a382-1ba5c3ca1478"
+        ],
+        "contradicted_by": [],
+        "reasoning": "Supported by authoritative evidence.",
+        "nli_summary": {
+          "entailed": 0,
+          "contradicted": 0,
+          "neutral": 0
+        }
+      }
+    },
+    {
+      "claim_id": "423603d4-b066-5d00-b752-f0c5dd45b4a5",
+      "sentence_id": 0,
+      "claim_text": "Apple was founded in 1976",
+      "subject": "Apple",
+      "predicate": "was founded",
+      "object": "in 1976",
+      "confidence_linguistic": {
+        "hedging": 0.0,
+        "absolutism": 0.0,
+        "temporal_specificity": 1.0,
+        "modal_strength": 1.0
+      },
+      "claim_type": "TEMPORAL",
+      "raw_sentence": "Steve Jobs founded Apple in 1976 and later served as CEO.",
+      "is_derived": true,
+      "source_claim_id": "ac8648e5-6701-5e39-a157-b59f473cc43c",
+      "subject_entity": {
+        "text": "Apple",
+        "entity_id": "Q312",
+        "canonical_name": "Apple Inc.",
+        "entity_type": "ORG",
+        "sources": {
+          "wikidata": "Q312",
+          "wikipedia": "https://www.wikidata.org/wiki/Q312",
+          "grokipedia": "https://grokipedia.com/page/Apple_Inc."
+        },
+        "confidence": 0.8,
+        "resolution_status": "RESOLVED"
+      },
+      "object_entity": {
+        "text": "in 1976",
+        "entity_id": "",
+        "canonical_name": "",
+        "entity_type": "UNKNOWN",
+        "sources": {},
+        "confidence": 0.0,
+        "resolution_status": "UNRESOLVED"
+      },
+      "evidence": {
+        "wikidata": [
+          {
+            "source": "WIKIDATA",
+            "entity_id": "Q312",
+            "property": "P571",
+            "value": "+1976-04-01T00:00:00Z",
+            "qualifiers": {},
+            "alignment": {
+              "subject_match": true,
+              "predicate_match": true,
+              "object_match": false,
+              "temporal_match": false
+            },
+            "evidence_id": "154c8366-6b8a-5cc5-a382-1ba5c3ca1478"
+          }
+        ],
+        "wikipedia": [],
+        "grokipedia": []
+      },
+      "evidence_status": {
+        "wikidata": "FOUND",
+        "wikipedia": "NOT_FOUND",
+        "grokipedia": "SKIPPED"
+      },
+      "verification": {
+        "verdict": "REFUTED",
+        "confidence": 0.9,
+        "used_evidence_ids": [],
+        "contradicted_by": [
+          "154c8366-6b8a-5cc5-a382-1ba5c3ca1478"
+        ],
+        "reasoning": "Contradicting evidence found.",
+        "nli_summary": {
+          "entailed": 0,
+          "contradicted": 0,
+          "neutral": 0
+        }
+      }
+    },
+    {
+      "claim_id": "93954a64-c162-5b22-9bcd-4de5e2d693d9",
+      "sentence_id": 0,
+      "claim_text": "Steve Jobs served as CEO",
+      "subject": "Steve Jobs",
+      "predicate": "served",
+      "object": "as CEO",
+      "confidence_linguistic": {
+        "hedging": 0.0,
+        "absolutism": 0.0,
+        "temporal_specificity": 1.0,
+        "modal_strength": 1.0
+      },
+      "claim_type": "RELATION",
+      "raw_sentence": "Steve Jobs founded Apple in 1976 and later served as CEO.",
+      "is_derived": false,
+      "subject_entity": {
+        "text": "Steve Jobs",
+        "entity_id": "Q19837",
+        "canonical_name": "Steve Jobs",
+        "entity_type": "PERSON",
+        "sources": {
+          "wikidata": "Q19837",
+          "wikipedia": "https://www.wikidata.org/wiki/Q19837",
+          "grokipedia": "https://grokipedia.com/page/Steve_Jobs"
+        },
+        "confidence": 1.0,
+        "resolution_status": "RESOLVED"
+      },
+      "object_entity": {
+        "text": "as CEO",
+        "entity_id": "Q484876",
+        "canonical_name": "chief executive officer",
+        "entity_type": "ENTITY",
+        "sources": {
+          "wikidata": "Q484876",
+          "wikipedia": "https://www.wikidata.org/wiki/Q484876",
+          "grokipedia": "https://grokipedia.com/page/chief_executive_officer"
+        },
+        "confidence": 0.8,
+        "resolution_status": "RESOLVED"
+      },
+      "evidence": {
+        "wikidata": [],
+        "wikipedia": [],
+        "grokipedia": []
+      },
+      "evidence_status": {
+        "wikidata": "NOT_FOUND",
+        "wikipedia": "NOT_FOUND",
+        "grokipedia": "SKIPPED"
+      },
+      "verification": {
+        "verdict": "INSUFFICIENT_EVIDENCE",
+        "confidence": 0.0,
+        "used_evidence_ids": [],
+        "contradicted_by": [],
+        "reasoning": "No evidence found.",
+        "nli_summary": {
+          "entailed": 0,
+          "contradicted": 0,
+          "neutral": 0
+        }
+      }
+    }
+  ]
+}

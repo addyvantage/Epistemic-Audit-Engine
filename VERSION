@@ -1,0 +1,8 @@
+v1.1
+Epistemic Calibration Release
+Frozen: 2026-01-23
+Features:
+- Epistemic Polarity Classifier (Object-Level vs Meta-Epistemic)
+- Humility Bonus (Risk Calibration)
+- Canonical Override Safety (Strict Insufficient-Only)
+- Hallucination Detector Bug Fixes (Signature/Duplicate)

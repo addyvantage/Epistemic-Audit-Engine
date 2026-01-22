@@ -1,0 +1,60 @@
+{
+  "overall_risk": "HIGH",
+  "hallucination_score": 0.75,
+  "flags": [
+    {
+      "claim_id": "423603d4-b066-5d00-b752-f0c5dd45b4a5",
+      "hallucination_type": "H3",
+      "severity": "HIGH",
+      "reason": "Overconfident Language",
+      "explanation": "Claim asserted confidently despite being Refuted.",
+      "supporting_signals": [
+        "modal_strength=1.0",
+        "verdict=REFUTED"
+      ]
+    },
+    {
+      "claim_id": "93954a64-c162-5b22-9bcd-4de5e2d693d9",
+      "hallucination_type": "H1",
+      "severity": "HIGH",
+      "reason": "Unsupported Assertion",
+      "explanation": "Claim presented as fact without evidence support.",
+      "supporting_signals": [
+        "verdict=INSUFFICIENT_EVIDENCE",
+        "absolutism=0.0",
+        "hedging=0.0"
+      ]
+    },
+    {
+      "claim_id": "93954a64-c162-5b22-9bcd-4de5e2d693d9",
+      "hallucination_type": "H2",
+      "severity": "MEDIUM",
+      "reason": "False Specificity",
+      "explanation": "Specific details (numbers/dates) asserted without evidence.",
+      "supporting_signals": [
+        "verdict=INSUFFICIENT_EVIDENCE",
+        "has_number=False",
+        "temporal_specificity=1.0"
+      ]
+    },
+    {
+      "claim_id": "93954a64-c162-5b22-9bcd-4de5e2d693d9",
+      "hallucination_type": "H3",
+      "severity": "MEDIUM",
+      "reason": "Overconfident Language",
+      "explanation": "Certainty of language exceeds strength of evidence.",
+      "supporting_signals": [
+        "modal_strength=1.0",
+        "verification_confidence=0.0"
+      ]
+    }
+  ],
+  "summary": {
+    "unsupported_claims": 1,
+    "false_specificity": 1,
+    "overconfident_language": 2,
+    "illegitimate_inference": 0,
+    "inconsistencies": 0,
+    "narrative_overreach": 0
+  }
+}

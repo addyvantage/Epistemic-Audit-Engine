@@ -1,0 +1,14 @@
+[
+    {
+        "doc_id": "doc_001",
+        "text": "SpaceX was founded in 2002 by Elon Musk."
+    },
+    {
+        "doc_id": "doc_002",
+        "text": "Apple released the iPhone in 2007. It is the best phone ever."
+    },
+    {
+        "doc_id": "doc_003",
+        "text": "Steve Jobs invented the internet in 1965 and sold 50 billion units."
+    }
+]
