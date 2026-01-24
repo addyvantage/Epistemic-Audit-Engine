@@ -1,14 +1,18 @@
 "use client"
 import React from 'react'
 import { ArrowRight, Loader2 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 
 interface AuditInputProps {
     onAudit: (text: string) => void
     isLoading: boolean
 }
 
+const MAX_CHARS = 5000
+
 export function AuditInput({ onAudit, isLoading }: AuditInputProps) {
     const [text, setText] = React.useState("")
+    const [isFocused, setIsFocused] = React.useState(false)
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
@@ -17,31 +21,68 @@ export function AuditInput({ onAudit, isLoading }: AuditInputProps) {
         }
     }
 
-    // Refactored: Container holds the visual border/bg. Textarea is transparent.
-    // Controls are absolutely positioned inside with z-index to ensure clickability.
+    const charCount = text.length
+    const charRatio = charCount / MAX_CHARS
+    const counterColor = charRatio > 0.9 ? "text-red-500" : charRatio > 0.7 ? "text-amber-500" : "text-slate-400"
 
     return (
         <form onSubmit={handleSubmit} className="w-full max-w-3xl mx-auto">
-            <div className="relative group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all focus-within:border-slate-300 focus-within:shadow-lg">
+            <motion.div
+                {...({
+                    initial: false,
+                    animate: {
+                        borderColor: isFocused ? 'rgba(203, 213, 225, 1)' : 'rgba(226, 232, 240, 1)',
+                        boxShadow: isFocused
+                            ? '0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 0 0 4px rgba(226, 232, 240, 0.4)'
+                            : '0 1px 2px 0 rgba(0, 0, 0, 0.05)'
+                    },
+                    className: "relative bg-white rounded-2xl border overflow-hidden transition-all duration-300 ease-out"
+                } as any)}
+            >
+                {/* Scrollable Input Area */}
+                <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
+                    <textarea
+                        value={text}
+                        onChange={(e) => setText(e.target.value)}
+                        onFocus={() => setIsFocused(true)}
+                        onBlur={() => setIsFocused(false)}
+                        placeholder="Paste AI-generated or analytical text to audit..."
+                        className="w-full min-h-[224px] p-6 pb-20 bg-transparent border-none resize-none text-lg text-slate-800 outline-none placeholder:text-slate-300 font-sans leading-relaxed"
+                        disabled={isLoading}
+                    />
+                </div>
 
-                <textarea
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    placeholder="Paste AI-generated or analytical text to audit..."
-                    className="w-full h-56 p-6 pb-20 rounded-2xl bg-transparent border-none resize-none text-lg text-slate-800 outline-none placeholder:text-slate-300 font-sans leading-relaxed"
-                    disabled={isLoading}
-                />
+                {/* Fixed Footer Actions */}
+                <div className="absolute bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t border-slate-100 flex items-center justify-between z-20">
+                    <div className="flex items-center gap-2 pl-2">
+                        <span className={`text-[11px] font-mono font-medium transition-colors duration-300 ${counterColor}`}>
+                            <AnimatePresence mode="wait">
+                                <motion.span
+                                    key={charCount}
+                                    initial={{ opacity: 0, y: 2 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -2 }}
+                                    transition={{ duration: 0.15 }}
+                                >
+                                    {charCount.toLocaleString()}
+                                </motion.span>
+                            </AnimatePresence>
+                            <span className="opacity-40"> / {MAX_CHARS.toLocaleString()} characters</span>
+                        </span>
+                    </div>
 
-                {/* Controls Container: Absolute Layout inside the white box */}
-                <div className="absolute bottom-4 right-4 flex items-center gap-4 z-20 bg-white/50 backdrop-blur-sm rounded-xl pl-2 py-1 pr-1">
-                    <span className={`text-xs text-slate-400 font-mono transition-opacity select-none ${text ? 'opacity-100' : 'opacity-0'}`}>
-                        {text.length} chars
-                    </span>
-
-                    <button
-                        type="submit"
-                        disabled={!text.trim() || isLoading}
-                        className="inline-flex items-center justify-center px-6 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-800 disabled:opacity-0 disabled:scale-95 disabled:pointer-events-none transition-all shadow-lg shadow-slate-900/10 active:scale-95"
+                    <motion.button
+                        {...({
+                            type: "submit",
+                            disabled: !text.trim() || isLoading,
+                            whileHover: !isLoading && text.trim() ? {
+                                y: -1,
+                                boxShadow: '0 4px 12px rgba(15, 23, 42, 0.15)',
+                                backgroundColor: '#1e293b'
+                            } : {},
+                            whileTap: !isLoading && text.trim() ? { scale: 0.97 } : {},
+                            className: "inline-flex items-center justify-center px-6 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-xl disabled:opacity-30 disabled:pointer-events-none transition-colors shadow-lg shadow-slate-900/10"
+                        } as any)}
                     >
                         {isLoading ? (
                             <Loader2 className="w-5 h-5 animate-spin" />
@@ -51,10 +92,9 @@ export function AuditInput({ onAudit, isLoading }: AuditInputProps) {
                                 <ArrowRight className="w-4 h-4 ml-2" />
                             </>
                         )}
-                    </button>
+                    </motion.button>
                 </div>
-
-            </div>
+            </motion.div>
         </form>
     )
 }

@@ -3,7 +3,7 @@ import os
 import json
 import random
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 # Add root directory to path to import Phase 1-5 modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
@@ -12,7 +12,9 @@ from claim_extractor import ClaimExtractor
 from entity_linker import EntityLinker
 from evidence_retriever import EvidenceRetriever
 from claim_verifier import ClaimVerifier
+from claim_verifier import ClaimVerifier
 from hallucination_detector import HallucinationDetector
+from risk_aggregator import RiskAggregator
 
 class AuditPipeline:
     def __init__(self, config_path: str = None):
@@ -44,6 +46,8 @@ class AuditPipeline:
         
         self.detector = HallucinationDetector()
         assert hasattr(self.detector, "detect"), "HallucinationDetector API mismatch: expected detect()"
+        
+        self.risk_aggregator = RiskAggregator()
         
         print("Pipeline Ready.")
 
@@ -100,7 +104,35 @@ class AuditPipeline:
         
         # Phase 3: Evidence
         print("Phase 3: Evidence...")
-        p3 = self.retriever.retrieve_evidence(p2)
+        
+        # Pre-Filter (v1.2 Performance)
+        claims_to_retrieve = []
+        skipped_claims = []
+        
+        print("Running Structural Pre-Filter...")
+        for claim in p2.get("claims", []):
+            structural_h = self.detector.detect_structural(claim)
+            if structural_h:
+                # Direct Refutation from Structure
+                # We skip evidence retrieval for these to save time/cost.
+                claim["evidence"] = {"wikidata": [], "wikipedia": [], "grokipedia": [], "primary_document": []}
+                # We can pre-fill verification data, but Verifier will re-run detection.
+                # However, Verifier needs 'hallucinations' key populated if we want it to skip hard work?
+                # Actually, Verifier calls detector.detect() which includes structural checks.
+                # So we just empty evidence and let Verifier handle it.
+                skipped_claims.append(claim)
+            else:
+                claims_to_retrieve.append(claim)
+                
+        print(f"Pre-filtered {len(skipped_claims)} claims (Structural Hallucinations). Retrieving {len(claims_to_retrieve)} claims.")
+        
+        # Create temp input for retriever
+        p2_filtered = {"claims": claims_to_retrieve, "metadata": p2.get("metadata", {}), "pipeline_config": pipeline_config}
+        
+        p3 = self.retriever.retrieve_evidence(p2_filtered)
+        
+        # Re-merge
+        p3["claims"].extend(skipped_claims)
         p3["pipeline_config"] = pipeline_config
         
         # Phase 4: Verification
@@ -108,22 +140,10 @@ class AuditPipeline:
         p4 = self.verifier.verify_claims(p3)
         p4["pipeline_config"] = pipeline_config
         
-        # Phase 5: Hallucination Detection
-        print("Phase 5: Hallucinations...")
-        p5 = self.detector.detect(p4)
-        
-        # Merge Claims from P4 (which has verification) with Hallucination Flags from P5
-        # P5 Output structure: {"overall_risk":..., "hallucination_score":..., "flags":..., "summary":...}
-        # We want to return the Full Claim List enhanced with everything.
-        # P5 logic reads P4 but output structure is Hallucinations Report.
-        # We need to construct the Final Response merging Claims + Hallucinations.
-        
-        # Let's map flags to claim_ids
-        flags_by_id = {}
-        for flag in p5.get("flags", []):
-            cid = flag.get("claim_id")
-            if cid not in flags_by_id: flags_by_id[cid] = []
-            flags_by_id[cid].append(flag)
+        # Phase 5: Hallucination Detection (Merged into Phase 4)
+        # claim_verifier now handles detection to inform verdicts.
+        # We skip separate detection step.
+        print("Phase 5: Hallucinations (Merged)...")
             
         final_claims = []
         disable_canonical = ablation_config.get("disable_canonical_override", False)
@@ -140,34 +160,22 @@ class AuditPipeline:
             is_canonical = any(k in claim.get("predicate", "").lower() for k in canonical_predicates)
             is_temporal = claim.get("claim_type") == "TEMPORAL"
             
-            hallucinations = flags_by_id.get(cid, [])
+            # Preserve hallucinations from Verifier
+            hallucinations = claim.get("hallucinations", [])
             
-            # Global Override (Fix 3 & 4) - Subject to Ablation
-            if is_resolved and not disable_canonical:
-                # Fix 3: Override Wrong Refutations for Canonical Facts
-                # Fix B (User Request): Only override INSUFFICIENT, never REFUTED (Epistemic Safety).
-                if is_canonical and verdict == "INSUFFICIENT_EVIDENCE":
-                    claim["verification"]["verdict"] = "SUPPORTED"
-                    claim["verification"]["reasoning"] = "Canonical fact (Global Safety Override)"
-                    claim["verification"]["confidence"] = max(claim["verification"].get("confidence", 0.0), 0.75)
-                    # Strip epistemic misrepresentation flags
-                    hallucinations = [h for h in hallucinations if h["hallucination_type"] not in ["H1", "H2", "H3"]]
-                
-                elif is_temporal and verdict == "INSUFFICIENT_EVIDENCE":
-                    claim["verification"]["verdict"] = "SUPPORTED_WEAK"
-                    claim["verification"]["reasoning"] = "Temporal fact; evidence gating upstream"
-                    hallucinations = [h for h in hallucinations if h["hallucination_type"] not in ["H1", "H2", "H3"]]
-
-                # Fix 4: Safety Check against Authorized Temporal Contradiction
-                if is_canonical and is_temporal and claim["verification"]["verdict"] == "SUPPORTED" and claim["verification"].get("used_evidence_ids"):
-                     # Check for strict temporal mismatch in used evidence or all evidence?
-                     # Prompt says "for ev in claim.get('evidence', {}).get('WIKIDATA', [])..."
-                     for ev in claim.get("evidence", {}).get("WIKIDATA", []):
-                         if ev.get("alignment", {}).get("temporal_match") is False:
-                             claim["verification"]["verdict"] = "REFUTED"
-                             claim["verification"]["confidence"] = 0.9
-                             claim["verification"]["reasoning"] = "Contradicted by authoritative temporal record"
-                             break
+            # Global Override (Fix 3 & 4) - REMOVED for v1.1 Hardening
+            # Principle: Absence of evidence != Evidence.
+            # We do not upgrade INSUFFICIENT to SUPPORTED just because it sounds canonical.
+            
+            # Fix 4: Safety Check against Authorized Temporal Contradiction (Keep?)
+            # If verdict is SUPPORTED (via normal means), check temporal.
+            if is_canonical and is_temporal and verdict == "SUPPORTED" and claim.get("verification", {}).get("used_evidence_ids"):
+                 for ev in claim.get("evidence", {}).get("WIKIDATA", []):
+                     if ev.get("alignment", {}).get("temporal_match") is False:
+                         claim["verification"]["verdict"] = "REFUTED"
+                         claim["verification"]["confidence"] = 0.9
+                         claim["verification"]["reasoning"] = "Contradicted by authoritative temporal record"
+                         break
 
             claim["hallucinations"] = hallucinations
             final_claims.append(claim)
@@ -204,8 +212,13 @@ class AuditPipeline:
             is_canonical = any(k in c.get("predicate", "").lower() for k in canonical_predicates)
             
             # 1. Evidence Consistency
-            if verdict == "REFUTED" and has_support:
-                raise RuntimeError(f"Epistemic violation: Refuted despite authoritative support. Claim ID: {c.get('claim_id')}")
+            # Narrowed Guard (Fix Epistemic Violation)
+            # It is illegal to Refute a claim that has Support UNLESS a Critical Hallucination exists.
+            has_critical = any(h.get("severity") == "CRITICAL" for h in c.get("hallucinations", []))
+            
+            if verdict == "REFUTED" and has_support and not has_critical:
+                 # This is the forbidden state: Refuted despite support, and no critical override.
+                 raise RuntimeError(f"Epistemic violation: Refuted despite authoritative support without Critical Hallucination. Claim ID: {c.get('claim_id')}")
                 
             if verdict == "SUPPORTED" and not has_support and not is_canonical:
                  # Note: SUPPORTED_WEAK is allowed to have no support if it's temporal? No, only canonicals/temporals via override.
@@ -227,9 +240,12 @@ class AuditPipeline:
             if verdict == "SUPPORTED" and "H1" in h_types:
                  raise RuntimeError(f"Epistemic violation: Supported claim flagged as Unsupported (H1). Claim ID: {c.get('claim_id')}")
 
+        # 4. Canonical Risk Contract (v1.3.9)
+        risk_result = self.risk_aggregator.calculate_risk([], final_claims)
+
         return {
-            "overall_risk": p5.get("overall_risk"),
-            "hallucination_score": p5.get("hallucination_score"),
-            "summary": p5.get("summary"),
+            "overall_risk": risk_result["overall_risk"],
+            "hallucination_score": risk_result["hallucination_score"],
+            "summary": risk_result["summary"],
             "claims": final_claims
         }

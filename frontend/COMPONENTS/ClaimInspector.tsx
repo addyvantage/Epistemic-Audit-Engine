@@ -49,15 +49,25 @@ export function ClaimInspector({ claim, onClose, mode = "DEMO" }: Props) {
     const style = verdictStyles[verdict] || verdictStyles.INSUFFICIENT_EVIDENCE
     const Icon = style.icon
 
+    // PRIMARY DOCUMENTS (Priority 1)
+    const primaryDocs = (claim.evidence?.primary_document || []).map((e: any) => ({
+        label: `PRIMARY DOCUMENT — ${e.authority || 'SEC'} ${e.document_type || 'Filing'} (${e.filing_year || ''})`,
+        fact: e.fact,
+        value: e.value,
+        snippet: e.snippet,
+        source: "SEC"
+    }))
+
     // NORMALIZATION LOGIC
+    // Structured (Priority 2)
     const structuredSources = (claim.evidence?.wikidata || []).map((e: any) => ({
         label: e.property?.replace(/P\d+/, '').trim() || "Property Match",
         value: String(e.value),
         url: e.source_url
     })).slice(0, 3)
 
-    // Combined narrative sources (Wikipedia + Grokipedia)
-    const primarySources = (claim.evidence?.wikipedia || []).map((e: any) => ({
+    // Combined narrative sources (Priority 3)
+    const narrativeSources = (claim.evidence?.wikipedia || []).map((e: any) => ({
         title: "Wikipedia Article",
         snippet: e.snippet,
         url: e.url
@@ -67,12 +77,12 @@ export function ClaimInspector({ claim, onClose, mode = "DEMO" }: Props) {
         url: null
     }))).slice(0, 3)
 
-    const hasEvidence = structuredSources.length > 0 || primarySources.length > 0
+    const hasEvidence = primaryDocs.length > 0 || structuredSources.length > 0 || narrativeSources.length > 0
 
     // TEMPLATED REASONING
     const reasoning = {
-        SUPPORTED: `This claim is supported because it aligns with structured records found in the knowledge graph${structuredSources.length > 0 ? ', specifically regarding ' + structuredSources[0].label : ''}.`,
-        REFUTED: `This claim is refuted because it contradicts authoritative records${structuredSources.length > 0 ? ' regarding ' + structuredSources[0].label : ''}.`,
+        SUPPORTED: `This claim is supported because it aligns with authoritative records${primaryDocs.length > 0 ? ' from primary documents' : ''}.`,
+        REFUTED: `This claim is refuted because it contradicts authoritative records${primaryDocs.length > 0 ? ' from primary documents' : ''}.`,
         INSUFFICIENT_EVIDENCE: "This claim is marked as uncertain because no matching records were found in the connected knowledge bases."
     }[verdict as string] || "Evidence analysis inconclusive."
 
@@ -92,8 +102,25 @@ export function ClaimInspector({ claim, onClose, mode = "DEMO" }: Props) {
             </div>
 
             <div className="flex-1 overflow-y-auto pb-10">
+                {/* Hallucination Alerts (v1.1) */}
+                {claim.hallucinations && claim.hallucinations.length > 0 && (
+                    <div className="px-6 pt-6 pb-2">
+                        {claim.hallucinations.map((h: any, i: number) => (
+                            <div key={i} className="bg-red-50 border border-red-200 rounded p-3 flex flex-col gap-1 mb-2">
+                                <div className="text-xs font-bold text-red-700 uppercase tracking-wide flex items-center gap-2">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    {h.hallucination_type ? h.hallucination_type.replace(/_/g, " ") : "Hallucination Detected"}
+                                </div>
+                                <div className="text-sm text-red-800 leading-tight font-medium">
+                                    {h.reason}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
                 {/* 1. Verdict (Forensic Label) */}
-                <div className="px-6 pt-6">
+                <div className="px-6 pt-2">
                     <div className={`p-4 rounded-lg border ${style.bg} ${style.border} flex items-start gap-3 mb-6`}>
                         <Icon className={`w-5 h-5 shrink-0 ${style.text} mt-0.5`} />
                         <div>
@@ -126,7 +153,7 @@ export function ClaimInspector({ claim, onClose, mode = "DEMO" }: Props) {
                 <div className="px-6">
                     <h3 className="text-xs font-bold text-slate-900 mb-4 flex items-center justify-between uppercase tracking-wide">
                         <span>Evidence Sources</span>
-                        {hasEvidence && <span className="text-[10px] font-normal text-slate-400">{structuredSources.length + primarySources.length} Records</span>}
+                        {hasEvidence && <span className="text-[10px] font-normal text-slate-400">{primaryDocs.length + structuredSources.length + narrativeSources.length} Records</span>}
                     </h3>
 
                     {!hasEvidence && (
@@ -136,6 +163,35 @@ export function ClaimInspector({ claim, onClose, mode = "DEMO" }: Props) {
                     )}
 
                     <div className="space-y-6">
+                        {/* PRIMARY DOCUMENT BLOCK */}
+                        {primaryDocs.length > 0 && (
+                            <div className="space-y-3">
+                                <div className="text-[10px] font-mono text-purple-600 uppercase font-bold flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse" />
+                                    Primary Documents
+                                </div>
+                                {primaryDocs.map((s: any, i: number) => (
+                                    <div key={i} className="bg-purple-50 border border-purple-100 rounded p-4 shadow-sm relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 p-2 opacity-10 font-bold text-6xl text-purple-900 select-none z-0">SEC</div>
+                                        <div className="relative z-10">
+                                            <div className="text-xs font-bold text-purple-900 uppercase tracking-wide mb-2 border-b border-purple-200 pb-2">{s.label}</div>
+
+                                            <div className="flex justify-between items-baseline mb-2">
+                                                <span className="text-xs text-purple-700 font-semibold uppercase">{s.fact}</span>
+                                                <span className="text-lg font-bold text-purple-900">{s.value}</span>
+                                            </div>
+
+                                            {s.snippet && (
+                                                <div className="text-xs text-purple-800 italic leading-relaxed bg-white/50 p-2 rounded border border-purple-100">
+                                                    “{s.snippet}”
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
                         {/* Structured Evidence Block */}
                         {structuredSources.length > 0 && (
                             <div className="space-y-3">
@@ -157,10 +213,10 @@ export function ClaimInspector({ claim, onClose, mode = "DEMO" }: Props) {
                         )}
 
                         {/* Narrative Evidence Block */}
-                        {primarySources.length > 0 && (
+                        {narrativeSources.length > 0 && (
                             <div className="space-y-3">
                                 <div className="text-[10px] font-mono text-slate-400 uppercase font-semibold">Narrative Corpal Evidence</div>
-                                {primarySources.map((s: any, i: number) => (
+                                {narrativeSources.map((s: any, i: number) => (
                                     <div key={i + 10} className="bg-white border border-slate-200 rounded p-3 shadow-sm">
                                         <div className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">{s.title}</div>
 

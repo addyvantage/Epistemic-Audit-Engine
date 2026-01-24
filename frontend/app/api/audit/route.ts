@@ -14,7 +14,9 @@ export async function POST(request: Request) {
         // Let's assume there is a generic POST endpoint.
         // I need to know the backend route. Step 1155 "uvicorn app:app"
 
-        const backendUrl = 'http://127.0.0.1:8000/audit'
+        // Use environment variable for backend URL
+        const apiBase = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000';
+        const backendUrl = `${apiBase}/audit`;
 
         const res = await fetch(backendUrl, {
             method: 'POST',

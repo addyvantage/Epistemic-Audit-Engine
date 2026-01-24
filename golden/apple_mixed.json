@@ -1,0 +1,36 @@
+{
+    "document_name": "Apple Mixed Case",
+    "expected_overall_risk": "MEDIUM",
+    "expected_hallucination_score": 0.26,
+    "expected_summary": {
+        "supported": 1,
+        "refuted": 1,
+        "uncertain": 1,
+        "insufficient": 0,
+        "total_asserted_claims": 3,
+        "epistemic_claims": 3
+    },
+    "claims": [
+        {
+            "claim_id": "c1",
+            "claim_text": "Apple Inc. is a company.",
+            "verdict": "SUPPORTED",
+            "epistemic_polarity": "POSITIVE",
+            "reasoning": "Standard knowledge."
+        },
+        {
+            "claim_id": "c2",
+            "claim_text": "Apple released the iPhone in 2007.",
+            "verdict": "SUPPORTED",
+            "epistemic_polarity": "POSITIVE",
+            "reasoning": "Historical fact."
+        },
+        {
+            "claim_id": "c3",
+            "claim_text": "Apple released the iPhone in 1980.",
+            "verdict": "REFUTED",
+            "epistemic_polarity": "CONTRADICTION",
+            "reasoning": "Temporal impossibility."
+        }
+    ]
+}

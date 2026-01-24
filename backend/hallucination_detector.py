@@ -36,6 +36,10 @@ class HallucinationDetector:
         Fast pre-filter for structural hallucinations that don't require external evidence.
         Returns the first detected hallucination, or None.
         """
+        # v1.3: Epistemic Guard
+        if claim.get("epistemic_status") == "NON_ASSERTIVE":
+            return None
+            
         # 1. SCOPE_OVERGENERALIZATION (Critical)
         scope = self._check_scope_overgeneralization(claim)
         if scope:
@@ -66,6 +70,11 @@ class HallucinationDetector:
         """
         Returns a list of detected hallucinations.
         """
+        # v1.3: Epistemic Guard
+        # Non-Assertive claims (e.g. "Some sources say...") must not trigger hallucinations.
+        if claim.get("epistemic_status") == "NON_ASSERTIVE":
+            return []
+            
         flags = []
         
         # 1. ENTITY_ROLE_CONFLICT (Phase 5 Hard Refutation)
@@ -138,12 +147,16 @@ class HallucinationDetector:
         if pred_tokens.isdisjoint(self.ARTIFACT_CREATION_PREDICATES):
             return None
             
+        # 1. Enforce Artifact-Only Eligibility (v1.2.1)
+        obj_ent = claim.get("object_entity", {})
+        if obj_ent.get("entity_type") != "ARTIFACT":
+            return None
+            
         subj_ent = claim.get("subject_entity", {})
         subj_qid = subj_ent.get("entity_id")
         
         # Check Wikidata Evidence for Creator Properties
         # P170 (creator), P176 (manufacturer), P178 (developer)
-        # REMOVED P112 (founder) as it apples to Orgs, not Artifacts.
         CREATOR_PROPS = {"P170", "P176", "P178"}
         
         wikidata_ev = evidence.get("wikidata", [])
@@ -153,19 +166,27 @@ class HallucinationDetector:
             if prop in CREATOR_PROPS:
                 val_qid = ev.get("value") # Expecting QID of actual creator
                 
+                # Check 1: Must be a valida QID
+                if not (val_qid and val_qid.startswith("Q")):
+                    continue
+                    
+                # HARD SAFETY: Same entity means no conflict (v1.2.1)
+                # If the evidence creator IS the subject, we strictly ignore this evidence item
+                # as it proves validity, it does not refute it.
+                if val_qid == subj_qid:
+                    continue
+                
                 # If the evidence value (Real Creator) is NOT the Claim Subject
-                if val_qid and val_qid.startswith("Q") and val_qid != subj_qid:
+                if val_qid != subj_qid:
                     # Double check: Is it just an alias? 
                     # Simulating check: If IDs mismatch, it's likely a conflict.
                     # Strict v1.1: Mismatching ID on Creator Property is a Conflict.
                     
-                    # Exception: If the claim subject is a Subsidiary of the Creator?
-                    # For "Google released iPhone" (Google Q95 vs Apple Q312) -> Conflict.
-                    
                     return {
                         "hallucination_type": "ENTITY_ROLE_CONFLICT",
-                        "reason": f"Entity Role Conflict: Object created by {val_qid}, not {subj_qid}.",
-                        "score": 0.95 # High confidence refutation
+                        "reason": f"Artifact attributed to an entity not listed as creator/manufacturer/developer in authoritative records.",
+                        "score": 0.95,
+                        "severity": "CRITICAL"
                     }
         return None
 

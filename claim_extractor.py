@@ -25,6 +25,10 @@ class ClaimExtractor:
             "amazing", "terrible", "beautiful", "ugly", "fantastic"
         }
         
+        # v1.3: Reported Speech & Hedging
+        self.REPORTED_SPEECH_LEMMAS = {"state", "report", "claim", "argue", "suggest", "say", "announce", "warn", "predict", "speculate"}
+        self.HEDGING_PHRASES = {"some sources", "according to", "it is claimed", "rumors", "allegedly"}
+        
     def extract(self, text: str) -> Dict[str, Any]:
         """
         Main entry point for claim extraction.
@@ -116,22 +120,23 @@ class ClaimExtractor:
     def _decompose_claims(self, sent_obj: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Extracts claims from a single sentence using dependency parsing.
-        Implement strict validity gates and temporal expansion.
         """
         sent = sent_obj["spacy_sent"]
         claims = []
         
-        # Strategy: Iterate over verbs (roots and conjuncts)
         verbs = [token for token in sent if token.pos_ == "VERB" or token.pos_ == "AUX"]
         
         extracted_tuples = []
         
         for verb in verbs:
-            # We only care about main verbs or conjoined verbs usually
             if verb.dep_ not in ("ROOT", "conj", "advcl", "ccomp", "xcomp"):
-                 pass
+                 continue
             
-            # Find Subject
+            # v1.3: Prune Content Clauses of Reported Speech (Double-check parent)
+            # If "sources state [that X is Y]", we drop X is Y if parent is reporting verb.
+            if verb.dep_ == "ccomp" and verb.head.lemma_ in self.REPORTED_SPEECH_LEMMAS:
+                 continue
+            
             subj = None
             for child in verb.children:
                 if child.dep_ in ("nsubj", "nsubjpass", "csubj", "csubjpass"):
@@ -147,20 +152,17 @@ class ClaimExtractor:
                         if child.dep_ in ("nsubj", "nsubjpass", "csubj", "csubjpass"):
                             subj = child
                             break
-            
-            # Find Object / Attribute
             obj = None
             for child in verb.children:
-                if child.dep_ in ("dobj", "attr", "acomp"):
+                if child.dep_ in ("dobj", "attr", "acomp", "xcomp"):
                     obj = child
                     break
-            
             if not obj:
                 for child in verb.children:
                     if child.dep_ == "prep":
                         for grandchild in child.children:
                              if grandchild.dep_ == "pobj":
-                                 obj = child # Use the preposition as the root of the object phrase
+                                 obj = child 
                                  break
             
             if subj:
@@ -170,36 +172,46 @@ class ClaimExtractor:
         
         for subj, verb, obj in extracted_tuples:
             
-            # --- FIX 1 & 2: VALIDITY CHECKS ---
             if not self._is_valid_claim(subj, verb, obj, sent):
                 continue
+                
+            # v1.3 Fragment Suppression: Drop if starts with 'that' or 'which'
+            # Note: valid claim check is better place? But we have tokens here.
+            # We will filter later after string formation.
+            pass
             
-            # --- FIX 5: FULL SUBTREE RECONSTRUCTION ---
-            subj_text = self._get_full_subtree_text(subj)
-            verb_phrase_text = self._get_verb_phrase(verb)
-            obj_text = self._get_full_subtree_text(obj) if obj else ""
+            # --- ATOMIC TOKEN & SPAN CALCULATION (Fix 1) ---
+            subj_tokens = self._get_atomic_tokens(subj)
+            verb_tokens = self._get_verb_tokens(verb)
+            obj_tokens = self._get_atomic_tokens(obj) if obj else []
             
-            claim_str = f"{subj_text} {verb_phrase_text} {obj_text}".strip()
+            all_claim_tokens = subj_tokens + verb_tokens + obj_tokens
+            if not all_claim_tokens: continue
             
-            # Sanity Check
+            # Filter hedging from span (Fix 1: Clean Highlights)
+            filtered_tokens = [t for t in all_claim_tokens if t.text.lower() not in self.HEDGING_TERMS]
+            if not filtered_tokens: filtered_tokens = all_claim_tokens
+
+            min_idx = min(t.idx for t in filtered_tokens)
+            max_idx = max(t.idx + len(t) for t in filtered_tokens)
+            
+            subj_text = "".join([t.text_with_ws for t in subj_tokens]).strip()
+            verb_text = "".join([t.text_with_ws for t in verb_tokens]).strip()
+            obj_text = "".join([t.text_with_ws for t in obj_tokens]).strip()
+            
+            claim_str = f"{subj_text} {verb_text} {obj_text}".strip()
+            
             if claim_str in unique_claim_ids:
                 continue
             unique_claim_ids.add(claim_str)
             
-            # Signals
             signals = self._compute_linguistic_signals(claim_str, sent.text)
-            
-            # ID Generation
-            id_str = f"{sent_obj['sentence_id']}_{claim_str}_{sent_obj['text']}"
+            id_str = f"{sent_obj['sentence_id']}_{claim_str}"
             claim_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, id_str))
 
-            # --- FIX 6: CLAIM TYPE TAGGING ---
-            # Lightweight heuristic
-            claim_type = "RELATION" # Default
-            
-            # Fix 2: Force Temporal Type for temporal predicates
+            claim_type = "RELATION"
             temporal_predicates = ["launched", "founded", "born", "died"]
-            if any(tp in verb_phrase_text.lower() for tp in temporal_predicates):
+            if any(tp in verb_text.lower() for tp in temporal_predicates):
                 claim_type = "TEMPORAL"
             elif verb.lemma_ == "be":
                 if obj and obj.dep_ in ("attr", "acomp"):
@@ -207,31 +219,103 @@ class ClaimExtractor:
                 else:
                     claim_type = "EXISTENTIAL"
             
+            # Fix 2: Contested Claims & v1.3 Hedging
+            epistemic_status = "ASSERTED"
+            
+            # 1. Check for Fragment (v1.3)
+            lower_claim = claim_str.lower()
+            if lower_claim.startswith("that ") or lower_claim.startswith("which ") or lower_claim.startswith("who "):
+                continue # Drop fragment
+            
+            # 2. Check for Hedging/Reported Speech (v1.3)
+            is_hedged = False
+            
+            # Check for reported speech predicate
+            if verb.lemma_ in self.REPORTED_SPEECH_LEMMAS:
+                 claim_type = "META_REPORTED"
+                 epistemic_status = "NON_ASSERTIVE"
+                 is_hedged = True
+                 
+            # Check for hedging terms in SUBJECT (e.g. "Some sources")
+            if any(h in subj_text.lower() for h in ["some sources", "critics", "commentators", "rumors"]):
+                 claim_type = "META_REPORTED"
+                 epistemic_status = "NON_ASSERTIVE"
+                 is_hedged = True
+                 
+            if self._is_contested(subj_text, verb.lemma_):
+                epistemic_status = "CONTESTED" # Contested is a subtype of Asserted/Non-Asserted? 
+                # Prompts says: "MUST be classified as META_REPORTED / NON_ASSERTIVE"
+                # If contested, it's inherently reported? "Critics argue..." -> Yes.
+                if claim_type != "META_REPORTED":
+                     epistemic_status = "CONTESTED" # Keep contested if not full meta
+            
+            if is_hedged:
+                 epistemic_status = "NON_ASSERTIVE"
+
             claim_entry = {
                 "claim_id": claim_id,
                 "sentence_id": sent_obj["sentence_id"],
                 "claim_text": claim_str,
                 "subject": subj_text,
-                "predicate": verb_phrase_text,
+                "predicate": verb_text,
                 "object": obj_text,
                 "confidence_linguistic": signals,
                 "claim_type": claim_type,
+                "epistemic_status": epistemic_status,
                 "raw_sentence": sent_obj["text"],
                 "is_derived": False,
                 "span": {
-                    "start": sent_obj["start"],
-                    "end": sent_obj["end"],
+                    "start": min_idx,
+                    "end": max_idx,
                     "sentence_index": sent_obj["sentence_id"]
                 }
             }
             claims.append(claim_entry)
 
-            # --- FIX 3: TEMPORAL CLAIM EXPANSION ---
             temporal_claim = self._create_temporal_claim(subj, verb, obj, sent, claim_id, sent_obj["sentence_id"], sent_obj["text"])
             if temporal_claim:
                  claims.append(temporal_claim)
             
         return claims
+
+    def _is_contested(self, subj_text: str, verb_lemma: str) -> bool:
+        """Fix 2: Detect explicitly contested claims"""
+        critics = ["critics", "commentators", "experts", "regulators", "some"]
+        contest_verbs = ["argue", "claim", "allege", "suggest", "contend"]
+        
+        subj_lower = subj_text.lower()
+        if any(c in subj_lower for c in critics) and verb_lemma in contest_verbs:
+            return True
+        return False
+
+    def _get_atomic_tokens(self, head_token) -> List[Any]:
+        """
+        Recursively retrieves tokens in subtree, pruning 'relcl', 'appos', 'advcl' 
+        to ensure atomicity of the component.
+        """
+        tokens = []
+        PRUNE_DEPS = {"relcl", "appos", "advcl", "parataxis"}
+        
+        def recurse(tok):
+            tokens.append(tok)
+            for child in tok.children:
+                if child.dep_ not in PRUNE_DEPS:
+                    recurse(child)
+        
+        recurse(head_token)
+        tokens.sort(key=lambda t: t.i)
+        return tokens
+
+    def _get_verb_tokens(self, verb) -> List[Any]:
+        """
+        Get verb phrase tokens (aux, neg, verb).
+        """
+        parts = [verb]
+        for child in verb.children:
+            if child.dep_ in ("aux", "auxpass", "neg", "prt"):
+                parts.append(child)
+        parts.sort(key=lambda t: t.i)
+        return parts
 
     def _is_valid_claim(self, subj, verb, obj, sent) -> bool:
         """
@@ -264,9 +348,6 @@ class ClaimExtractor:
              
              if has_evaluative:
                  # Check for measurable anchors in the OBJECT phrase primarily, or sentence context
-                 # The prompt says: "Unless object contains explicit numeric, monetary, or ranked data"
-                 
-                 # Look for numbers or specific measurable keywords in the object phrase
                  measurable = False
                  # Check entities in object subtree
                  for t in obj.subtree:
@@ -281,10 +362,7 @@ class ClaimExtractor:
                  
                  if not measurable:
                      # Check keywords
-                     measurable_keywords = ["revenue", "market cap", "sales", "profit", "valuation", "worth"]
-                     # "ranked" can be vague "ranked high". "rank #1" is card. 
-                     # Let's keep "rank" if looking for "rank" noun or verb? 
-                     # Prompt allowed "ranked data".
+                     measurable_keywords = ["revenue", "market cap", "sales", "profit", "valuation", "worth", "ranked"]
                      if any(k in obj_subtree_text for k in measurable_keywords):
                          measurable = True
                      # Check for explicit rank pattern "rank 1", "top 10"
@@ -318,7 +396,6 @@ class ClaimExtractor:
         Extracts a derived temporal claim if a date is present in the verb's modifiers.
         Ensures passive voice if subject is switched.
         """
-        verb_subtree_indices = {t.i for t in verb.subtree}
         target_date = None
         
         # 1. Look for explicit prep dates attached to verb
@@ -337,17 +414,6 @@ class ClaimExtractor:
             return None
             
         # Determine Subject
-        # If active verb "Steve founded Apple", temporal focus might be "Apple was founded" or "Steve founded".
-        # Standard: "Apple was founded in 1976" is often the intended atomic fact for the entity 'Apple'.
-        # However, "Steve founded Apple in 1976" is also about Steve.
-        # But if we use Object as subject, we MUST passivize.
-        
-        # Heuristic: If object exists, prioritize object for "creation" verbs? 
-        # Or just create the claim keeping original subject? 
-        # Prompt examples: "Steve Jobs founded Apple in 1976" -> "Apple was founded in 1976" (Derived).
-        # This implies we WANT to switch to the object if possible?
-        # Actually prompt said: "Use object as new subject when semantically valid" in Fix 3.
-        
         new_subj_text = self._get_full_subtree_text(subj)
         subject_was_switched = False
         
@@ -360,26 +426,9 @@ class ClaimExtractor:
         verb_phrase = self._get_verb_phrase(verb)
         
         # FIX 2: Passive Voice Normalization
-        # If we switched subject and the verb is not already passive, we need to add "was/were".
-        # Check if verb is already passive (auxpass exists in children)
         is_passive = any(c.dep_ == "auxpass" for c in verb.children)
         
         if subject_was_switched and not is_passive:
-            # Add "was" - naive but standard for atomic facts
-            # Preserve "not" if present? "Steve did not invent iPhone" -> "iPhone was not invented"? 
-            # This is hard to do perfectly with string manipulation.
-            # "founded" -> "was founded"
-            # "served" -> "was served" ?? No. "Steve served Apple" -> "Apple was served"? Rare.
-            # "Steve served as CEO" -> Obj is "as" or None. We handle prep obj earlier.
-            
-            # Simple check: Only passivize if it seems transitive and appropriate?
-            # Or just blindly apply "was" as per prompt instruction for "founded".
-            
-            # Handle "did not invent" -> "was not invented" requires lemmatization changes "invent" -> "invented".
-            # This is risky without distinct generation info.
-            # But the prompt explicitly demands "Apple was founded".
-            
-            # If verb tag is VBD (past), we can prepend "was".
             if verb.tag_ == "VBD": 
                  # "founded" -> "was founded"
                  verb_phrase = "was " + verb_phrase
@@ -401,13 +450,14 @@ class ClaimExtractor:
             "raw_sentence": raw_sent,
             "is_derived": True,
             "source_claim_id": parent_claim_id,
+            "highlight_type": "IMPLICIT_FACT", # Fix 3
             "span": {
                 "start": sent.start_char,
                 "end": sent.end_char,
                 "sentence_index": sent_id
             }
         }
-
+    
     def _get_subtree_text(self, token) -> str:
         """Helper to get the full text of a token's subtree (e.g. 'Steve Jobs' from 'Steve')"""
         return "".join([t.text_with_ws for t in token.subtree]).strip()
@@ -416,10 +466,6 @@ class ClaimExtractor:
         """
         Computes hedging, absolutism, specificity, and modal strength.
         """
-        # We search in the FULL raw sentence for context, or just the claim? 
-        # Often the hedge is in the sentence but outside the extraction: "It is likely that [claim]"
-        # So we should probably check `sentence_text`.
-        
         text_lower = sentence_text.lower()
         
         # 1. Hedging
