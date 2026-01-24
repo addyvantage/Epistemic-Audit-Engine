@@ -160,7 +160,7 @@ const HeroSection = () => (
                     </motion.button>
                 </Link>
 
-                <Link href="/info">
+                <Link href="/how-it-works">
                     <motion.button
                         whileHover="hover"
                         whileTap="tap"

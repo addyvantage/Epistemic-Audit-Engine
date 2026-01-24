@@ -30,7 +30,7 @@ export default function RootLayout({
 
                         <div className="flex items-center gap-6 text-sm font-medium text-slate-500">
                             <Link href="/audit" className="hover:text-slate-900 transition-colors">Audit</Link>
-                            <Link href="/info" className="hover:text-slate-900 transition-colors">How it works</Link>
+                            <Link href="/how-it-works" className="hover:text-slate-900 transition-colors">How it works</Link>
                             <div className="h-4 w-px bg-slate-200" />
                             <a href="https://github.com/addyvantage/epistemic-audit-engine" target="_blank" rel="noopener noreferrer" className="hover:text-slate-900 transition-colors">
                                 <Github className="w-5 h-5" />
