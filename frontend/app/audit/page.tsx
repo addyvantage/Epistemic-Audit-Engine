@@ -4,6 +4,8 @@ import { AuditInput } from '@/components/AuditInput'
 import { AuditSummary } from '@/components/AuditSummary'
 import { AuditedText } from '@/components/AuditedText'
 import { Loader2 } from 'lucide-react'
+import { TimelineView } from '@/components/TimelineView'
+import { ExplainabilityToggle } from '@/components/ExplainabilityToggle'
 
 
 // System Phases
@@ -24,6 +26,8 @@ export default function AuditPage() {
     const [sourceText, setSourceText] = useState("")
     const [loadingMsg, setLoadingMsg] = useState(LOADING_STATES[0])
     const [mode, setMode] = useState<"DEMO" | "RESEARCH">("DEMO")
+    const [explainabilityMode, setExplainabilityMode] = useState<'CASUAL' | 'EXPERT'>('CASUAL')
+    const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null)
 
     // Simulate loading steps for visual weight
     useEffect(() => {
@@ -122,47 +126,59 @@ export default function AuditPage() {
                 {phase === "RESULTS" && result && (
                     <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 space-y-12">
 
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Audit Report</h2>
-                            <button
-                                onClick={() => { setResult(null); setPhase("INPUT"); }}
-                                className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors underline underline-offset-4"
-                            >
-                                Start New Audit
-                            </button>
+                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                            <div>
+                                <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Audit Report</h2>
+                                <p className="text-slate-400 text-xs mt-1">v1.6.2 Epistemic Interface</p>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <ExplainabilityToggle mode={explainabilityMode} onChange={setExplainabilityMode} />
+                                <button
+                                    onClick={() => { setResult(null); setPhase("INPUT"); setSelectedClaimId(null); }}
+                                    className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors underline underline-offset-4"
+                                >
+                                    New Audit
+                                </button>
+                            </div>
                         </div>
 
                         {/* Dominant Summary Card */}
                         <div className="relative">
                             <div className="absolute -inset-4 bg-slate-200/50 rounded-3xl blur-2xl -z-10" />
                             {(() => {
-                                const verdictCounts: Record<string, number> = {
-                                    SUPPORTED: 0,
-                                    SUPPORTED_WEAK: 0,
-                                    REFUTED: 0,
-                                    INSUFFICIENT_EVIDENCE: 0
-                                }
 
-                                result.claims?.forEach((c: any) => {
-                                    const v = c.verification?.verdict
-                                    if (v && verdictCounts[v] !== undefined) {
-                                        verdictCounts[v]++
-                                    }
-                                })
+                                // Use Backend Values Directly (Canonical Contract v1.3.9)
+                                console.log("RAW RISK FROM BACKEND:", result.hallucination_score, result.overall_risk)
 
+                                const finalScore = typeof result.hallucination_score === "number"
+                                    ? Math.max(0, Math.min(1, result.hallucination_score))
+                                    : 0.0
+                                const finalLabel = result.overall_risk || "HIGH"
+
+                                // Use Backend Summary (No Frontend Recalculation)
+                                const summ = result.summary || {}
                                 const normalizedSummary = {
-                                    Verified: verdictCounts.SUPPORTED + verdictCounts.SUPPORTED_WEAK,
-                                    Refuted: verdictCounts.REFUTED,
-                                    Uncertain: verdictCounts.INSUFFICIENT_EVIDENCE,
-                                    Claims: result.claims?.length || 0
+                                    Verified: summ.supported || 0,
+                                    Refuted: summ.refuted || 0,
+                                    Uncertain: (summ.uncertain || 0) + (summ.insufficient || 0),
+                                    Claims: summ.epistemic_claims || summ.total_asserted_claims || 0
                                 }
 
                                 return (
-                                    <AuditSummary
-                                        overallRisk={result.overall_risk}
-                                        hallucinationScore={result.hallucination_score}
-                                        summary={normalizedSummary}
-                                    />
+                                    <>
+                                        <AuditSummary
+                                            overallRisk={finalLabel}
+                                            hallucinationScore={finalScore}
+                                            summary={normalizedSummary}
+                                        />
+                                        {finalScore === 0 && normalizedSummary.Uncertain > 0 && (
+                                            <div className="mt-2 text-center">
+                                                <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">
+                                                    Risk is driven by uncertainty, not verified correctness.
+                                                </span>
+                                            </div>
+                                        )}
+                                    </>
                                 )
                             })()}
                         </div>
@@ -182,8 +198,30 @@ export default function AuditPage() {
                             </div>
 
                             {/* The Paper - CONSTRAINED HEIGHT */}
-                            <div className="max-w-3xl mx-auto py-12 px-8 md:px-12 bg-white shadow-sm my-8 border border-slate-100 max-h-[520px] overflow-y-auto">
-                                <AuditedText sourceText={sourceText} claims={result.claims} mode={mode} />
+                            <div className="flex flex-col lg:flex-row">
+                                <div className="flex-1 py-12 px-8 md:px-12 bg-white shadow-sm border-r border-slate-100 max-h-[600px] overflow-y-auto">
+                                    <AuditedText
+                                        sourceText={sourceText}
+                                        claims={result.claims}
+                                        mode={mode}
+                                        selectedClaimId={selectedClaimId}
+                                        onSelectClaim={setSelectedClaimId}
+                                        explainabilityMode={explainabilityMode}
+                                    />
+                                </div>
+                                <div className="w-full lg:w-80 bg-slate-50/30 p-6 flex flex-col gap-6 overflow-y-auto max-h-[600px]">
+                                    <TimelineView
+                                        claims={result.claims}
+                                        onClaimClick={setSelectedClaimId}
+                                        activeClaimId={selectedClaimId}
+                                        explainabilityMode={explainabilityMode}
+                                    />
+
+                                    <div className="p-4 bg-white border border-slate-200 rounded-lg text-xs text-slate-500 leading-relaxed shadow-sm">
+                                        <b className="text-slate-700 block mb-1">Timeline Insights</b>
+                                        Nodes represent atomic claims in order of appearance. Click a node to scroll/inspect.
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
