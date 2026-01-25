@@ -1,0 +1,30 @@
+{
+  "summary": {
+    "total_cases": 24,
+    "passed": 4,
+    "failed": 20,
+    "pass_rate": "16.7%"
+  },
+  "metrics": {
+    "verdict_accuracy": "47.4%",
+    "hallucination_recall": "20.0%",
+    "risk_accuracy": "30.4%"
+  },
+  "passed_cases": [
+    "SUPPORT_01: Apple was founded in 1976 -> SUPPORTED",
+    "REFUTE_01: Apple was founded in 1980 -> REFUTED (verdict correct, missing halluc type)",
+    "EDGE_UNRESOLVED_01: Xyzzy Plugh... -> INSUFFICIENT_EVIDENCE",
+    "EDGE_HEDGED_01: Apple reportedly founded... -> SUPPORTED"
+  ],
+  "failure_breakdown": {
+    "entity_linking": 11,
+    "verification": 5,
+    "hallucination_detection": 2,
+    "claim_extraction": 2
+  },
+  "notes": [
+    "NLI model not available (transformers not installed)",
+    "Many entity linking failures for common entities (Elon Musk, Paris, Steve Jobs)",
+    "This suggests Wikidata API connectivity or disambiguation issues"
+  ]
+}

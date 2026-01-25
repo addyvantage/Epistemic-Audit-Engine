@@ -1,0 +1,84 @@
+{
+  "evaluation_date": "2025-01-25",
+  "system_version": "1.4.0",
+  "environment": {
+    "nli_model": "UNAVAILABLE (transformers not installed)",
+    "deterministic_seed": 42
+  },
+  "summary": {
+    "total_cases": 24,
+    "passed": 4,
+    "failed": 20,
+    "pass_rate": "16.7%"
+  },
+  "metrics": {
+    "verdict_accuracy": "47.4%",
+    "hallucination_recall": "20.0%",
+    "risk_accuracy": "30.4%"
+  },
+  "passed_cases": [
+    {
+      "id": "SUPPORT_01",
+      "input": "Apple was founded in 1976.",
+      "verdict": "SUPPORTED"
+    },
+    {
+      "id": "EDGE_UNRESOLVED_01",
+      "input": "Xyzzy Plugh founded Zork Industries...",
+      "verdict": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "id": "EDGE_HEDGED_01",
+      "input": "Apple was reportedly founded around 1976.",
+      "verdict": "SUPPORTED"
+    },
+    {
+      "id": "SANITY_RULE_01",
+      "input": "The quarterly report mentioned...",
+      "verdict": "UNCERTAIN (sanity rule)"
+    }
+  ],
+  "failure_analysis": {
+    "root_causes": {
+      "trailing_punctuation_in_objects": {
+        "description": "Claim extractor includes trailing periods in object text",
+        "example": "SpaceX. instead of SpaceX",
+        "impact": "Object entity resolution fails",
+        "affected_cases": 11,
+        "status": "KNOWN_BUG (not fixed during freeze)"
+      },
+      "missing_nli_model": {
+        "description": "transformers library not installed",
+        "impact": "NLI-based alignment scoring degraded",
+        "affected_cases": "All cases using Wikipedia evidence",
+        "status": "ENVIRONMENT_ISSUE"
+      },
+      "hallucination_detection_gaps": {
+        "description": "Some hallucination patterns not triggering",
+        "examples": [
+          "TEMPORAL_FABRICATION",
+          "AUTHORITY_BLEED"
+        ],
+        "affected_cases": 5,
+        "status": "KNOWN_LIMITATION"
+      }
+    },
+    "failure_by_phase": {
+      "entity_linking": 11,
+      "verification": 5,
+      "hallucination_detection": 2,
+      "claim_extraction": 2,
+      "evidence_retrieval": 4
+    }
+  },
+  "recommendations": [
+    "Install transformers library for full NLI support",
+    "Fix trailing punctuation bug in claim_extractor.py (post-freeze)",
+    "Add more hallucination detection patterns (post-freeze)"
+  ],
+  "freeze_compliance": {
+    "behavior_changes": "NONE",
+    "new_features": "NONE",
+    "threshold_changes": "NONE"
+  }
+}
