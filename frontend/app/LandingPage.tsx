@@ -301,7 +301,6 @@ const ShowcaseSection = () => {
     const [activeStep, setActiveStep] = useState(0)
     const [demoState, setDemoState] = useState<DemoState>('ENTRY')
     const [viewMode, setViewMode] = useState<ViewMode>('GUIDED')
-    const [cycleCount, setCycleCount] = useState(0)
 
     // Refs
     const containerRef = useRef<HTMLDivElement>(null)
@@ -374,23 +373,46 @@ const ShowcaseSection = () => {
                     break
                 case 'EXIT_RITUAL':
                     timer = setTimeout(() => {
-                        if (cycleCount < 1) { // Stop after 2 cycles
-                            setCycleCount(c => c + 1)
-                            setActiveStep(prev => (prev + 1) % stages.length)
-                            setDemoState('ENTRY')
-                        } else {
-                            setDemoState('INSPECT_FREELY')
-                        }
-                    }, 600)
+                        // Unconditional Loop
+                        setActiveStep(prev => (prev + 1) % stages.length)
+                        setDemoState('ENTRY')
+                    }, 600) // 600ms pause before restart
                     break
             }
         }
         transition()
         return () => clearTimeout(timer)
-    }, [demoState, viewMode, cycleCount])
+    }, [demoState, viewMode])
 
     const isCardVisible = (demoState === 'EXPLAIN' || demoState === 'READING') && viewMode === 'GUIDED'
-    const isHighlightActive = (demoState === 'EXPLAIN' || demoState === 'READING') || viewMode === 'EXPERT'
+    const isHighlightActive = (['DWELL_ON_CLAIM', 'EXPLAIN', 'READING'].includes(demoState)) || viewMode === 'EXPERT'
+
+    // Dynamic Card Positioning
+    const [cardPos, setCardPos] = useState({ x: 0, y: 0 })
+
+    useEffect(() => {
+        const updateCardPos = () => {
+            if (!containerRef.current || !current.targetId) return
+            const targetEl = claimRefs.current[current.targetId]
+            if (targetEl) {
+                const cRect = containerRef.current.getBoundingClientRect()
+                const tRect = targetEl.getBoundingClientRect()
+
+                // Center X alignment
+                const targetX = (tRect.left - cRect.left) + (tRect.width / 2)
+                // Anchor Y: Just above the text line (approx 15px gap)
+                // We use bottom-anchoring in CSS (translate-y-[-100%]) so y should be claim top.
+                const targetY = (tRect.top - cRect.top) - 24
+
+                setCardPos({ x: targetX, y: targetY })
+            }
+        }
+
+        // Update on step/state change + resize
+        updateCardPos()
+        window.addEventListener('resize', updateCardPos)
+        return () => window.removeEventListener('resize', updateCardPos)
+    }, [activeStep, demoState, current.targetId])
 
     return (
         <section className="py-32 px-4 bg-slate-50">
@@ -399,7 +421,7 @@ const ShowcaseSection = () => {
                     className="inline-flex items-center gap-3 p-1.5 bg-slate-200/50 rounded-full mb-8 cursor-pointer select-none transition-colors hover:bg-slate-200"
                     onClick={() => {
                         setViewMode(prev => prev === 'GUIDED' ? 'EXPERT' : 'GUIDED')
-                        if (viewMode === 'GUIDED') setDemoState('INSPECT_FREELY')
+                        if (viewMode === 'GUIDED') setDemoState('ENTRY') // Restart loop on toggle back
                     }}
                 >
                     <span className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${viewMode === 'GUIDED' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-400'}`}>Guided</span>
@@ -448,35 +470,33 @@ const ShowcaseSection = () => {
                         className: "bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-2xl relative min-h-[500px] flex flex-col"
                     } as any)}
                 >
-                    <AnimatePresence>
-                        {demoState === 'INSPECT_FREELY' && viewMode === 'GUIDED' && (
-                            <motion.div
-                                {...({
-                                    initial: { opacity: 0, y: -10 },
-                                    animate: { opacity: 1, y: 0 },
-                                    className: "absolute top-6 left-0 right-0 text-center z-30"
-                                } as any)}
-                            >
-                                <span className="inline-flex px-3 py-1 rounded-full bg-slate-100/80 backdrop-blur text-[10px] font-medium text-slate-500 border border-slate-200">
-                                    Demo complete. You can now inspect freely.
-                                </span>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
+                    {/* Completion Message Removed */}
 
-                    <AnimatePresence mode="wait">
+                    <AnimatePresence>
                         {isCardVisible && (
                             <motion.div
-                                key={`${activeStep}-overlay`}
-                                {...({
-                                    initial: { opacity: 0, scale: 0.98, y: 10 },
-                                    animate: { opacity: 1, scale: 1, y: 0 },
-                                    exit: { opacity: 0, scale: 0.98, y: -10 },
-                                    transition: { duration: 0.4, ease: "easeOut" },
-                                    className: "absolute top-12 left-1/2 -translate-x-1/2 w-[340px] z-40"
-                                } as any)}
+                                key="overlay-card"
+                                initial={{ opacity: 0, scale: 0.95, y: cardPos.y + 10, x: cardPos.x, xPercent: -50, yPercent: -100 }}
+                                animate={{
+                                    opacity: 1,
+                                    scale: 1,
+                                    y: cardPos.y,
+                                    x: cardPos.x,
+                                    xPercent: -50,
+                                    yPercent: -100
+                                }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                transition={{
+                                    type: "spring",
+                                    stiffness: 300,
+                                    damping: 30,
+                                    opacity: { duration: 0.2 }
+                                }}
+                                className="absolute w-[340px] z-40 origin-bottom"
+                                style={{ top: 0, left: 0 }}
+                                {...({} as any)}
                             >
-                                <div className="p-6 rounded-2xl bg-white/80 backdrop-blur-xl border border-slate-200/50 shadow-[0_20px_50px_rgba(0,0,0,0.1)] relative overflow-hidden">
+                                <div className={`p-6 rounded-2xl bg-white/95 backdrop-blur-xl border shadow-[0_20px_50px_rgba(0,0,0,0.1)] relative overflow-hidden transition-all duration-500 ${isHighlightActive ? `border-${current.color}-200 shadow-${current.color}-500/10` : 'border-slate-200/50'}`}>
                                     <div role="note" className="space-y-4 relative z-10">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2.5">
@@ -487,6 +507,7 @@ const ShowcaseSection = () => {
                                         </div>
                                         <p className="text-[13px] text-slate-600 leading-relaxed font-medium">{current.body}</p>
                                         <motion.p
+                                            key={`${activeStep}-note`}
                                             {...({
                                                 initial: { opacity: 0 },
                                                 animate: { opacity: 1 },
