@@ -25,7 +25,9 @@ Input Text
     ↓
 Phase 1: claim_extractor.py      → Atomic claims via spaCy dependency parsing
     ↓
-Phase 2: entity_linker.py        → Wikidata entity resolution
+Phase 1.5: entity_context.py     → Document-level entity tracking (v1.4)
+    ↓
+Phase 2: entity_linker.py        → Wikidata entity resolution + coreference
     ↓
 Phase 3: evidence_retriever.py   → Wikidata statements + Wikipedia passages (SBERT)
     ↓
@@ -37,6 +39,15 @@ Output: { overall_risk, hallucination_score, claims[] }
 ```
 
 Orchestrator: `backend/pipeline/run_full_audit.py`
+
+### Entity Resolution Status (v1.4)
+
+| Status | Description |
+|--------|-------------|
+| `RESOLVED` | High-confidence direct Wikidata match (≥0.75) |
+| `RESOLVED_SOFT` | Famous entity override or contextual disambiguation |
+| `RESOLVED_COREF` | Coreference resolution from document context |
+| `UNRESOLVED` | No viable candidate found |
 
 ## Component Classification
 
@@ -70,13 +81,37 @@ Orchestrator: `backend/pipeline/run_full_audit.py`
 |------|---------|
 | `backend/pipeline/run_full_audit.py` | Pipeline orchestrator |
 | `claim_extractor.py` | Phase 1: spaCy-based claim decomposition |
-| `entity_linker.py` | Phase 2: Wikidata entity linking |
+| `entity_context.py` | Phase 1.5: Document-level entity tracking (v1.4) |
+| `entity_linker.py` | Phase 2: Wikidata entity linking + coreference |
 | `evidence_retriever.py` | Phase 3: Multi-source evidence collection |
 | `claim_verifier.py` | Phase 4: NLI-based verdict assignment |
 | `hallucination_detector.py` | Phase 5: Pattern-based anomaly detection |
 | `risk_aggregator.py` | Risk score calculation |
 | `nli_engine.py` | RoBERTa-MNLI wrapper |
 | `property_mapper.py` | Predicate → Wikidata P-ID mapping |
+| `config/core_config.py` | Thresholds and feature flags |
+
+## Coverage Improvements (v1.4)
+
+The following improvements reduce INSUFFICIENT_EVIDENCE overproduction while preserving epistemic rigor:
+
+### 1. Document-Level Coreference
+Generic references like "the company" are resolved to dominant named entities:
+- Tracks ORG, PERSON, LOC entities across document
+- Requires frequency or recency dominance
+- Conservative: returns None for ambiguous cases
+
+### 2. Structured Evidence Independence
+Wikidata evidence can independently yield SUPPORTED:
+- No longer requires narrative confirmation
+- Alignment metadata computed for each evidence item
+- Confidence capped at 0.85 for structured sources
+
+### 3. Weak Support Accumulation
+Multiple weak corroborations upgrade INSUFFICIENT → UNCERTAIN:
+- Requires 2+ weak support sources
+- Average score ≥ 0.68
+- Does NOT upgrade to SUPPORTED (honest uncertainty)
 
 ## When Modifying Code
 

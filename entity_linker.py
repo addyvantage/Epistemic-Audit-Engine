@@ -1,7 +1,10 @@
 import requests
 import time
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from entity_models import ResolvedEntity, EntityCandidate
+
+if TYPE_CHECKING:
+    from entity_context import EntityContext
 
 class EntityLinker:
     def __init__(self):
@@ -11,6 +14,24 @@ class EntityLinker:
         self.session.headers.update({
             "User-Agent": "EpistemicAuditEngine/1.0 (Research Project)"
         })
+        # Optional document-level entity context for coreference resolution
+        self._context: Optional['EntityContext'] = None
+
+    def set_context(self, context: 'EntityContext') -> None:
+        """
+        Set document-level entity context for coreference resolution.
+
+        When set, the linker will attempt to resolve generic references
+        (e.g., "the company") to previously mentioned named entities.
+
+        Args:
+            context: An EntityContext instance tracking document entities
+        """
+        self._context = context
+
+    def clear_context(self) -> None:
+        """Clear the entity context. Call between documents."""
+        self._context = None
 
     def link_claims(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -42,9 +63,40 @@ class EntityLinker:
     def _resolve_entity(self, text: str, context_type: str, context: str = "") -> ResolvedEntity:
         """
         Resolves a single text mention to a canonical entity.
+
+        Resolution Order:
+        1. Direct Wikidata lookup (primary path)
+        2. Coreference resolution via EntityContext (if available and direct fails)
+
+        Args:
+            text: The mention text to resolve
+            context_type: "SUBJECT" or "OBJECT"
+            context: Sentence context for disambiguation
+
+        Returns:
+            ResolvedEntity with resolution_status indicating outcome
         """
         if not text or len(text.strip()) < 2:
              return self._create_unresolved(text, "Text too short")
+
+        # Check for coreference resolution first for generic references
+        # This runs before expensive API calls if the text matches generic patterns
+        if self._context and self._is_generic_reference(text):
+            coref_result = self._context.resolve_generic(text, context_type)
+            if coref_result:
+                # Apply confidence discount for indirect resolution (10% reduction)
+                discounted_confidence = coref_result.confidence * 0.9
+                return ResolvedEntity(
+                    text=text,
+                    entity_id=coref_result.entity_id,
+                    canonical_name=coref_result.canonical_name,
+                    entity_type=coref_result.entity_type,
+                    sources=coref_result.sources,
+                    confidence=discounted_confidence,
+                    resolution_status="RESOLVED_COREF",
+                    source_status={"wikidata": "VERIFIED", "wikipedia": "VERIFIED" if coref_result.sources.get("wikipedia") else "UNVERIFIED"},
+                    decision_reason=f"Coreference: {coref_result.decision_reason}"
+                )
 
         query = self._clean_query(text)
         forced_disambiguation = False
@@ -117,6 +169,15 @@ class EntityLinker:
                  decision_reason=decision_reason
              )
         else:
+             # Direct resolution failed - try coreference as fallback
+             if self._context and not self._is_generic_reference(text):
+                 # For non-generic references that still failed (e.g., ambiguous names),
+                 # we don't attempt coreference - it's genuinely unresolved
+                 pass
+             elif self._context and self._is_generic_reference(text):
+                 # Already tried coreference at the start, so this is truly unresolved
+                 pass
+
              return self._create_unresolved(text, decision_reason, candidates_log)
 
     def _clean_query(self, text: str) -> str:
@@ -320,7 +381,32 @@ class EntityLinker:
             
         return "UNKNOWN" # Changed from ENTITY
 
+    def _is_generic_reference(self, text: str) -> bool:
+        """
+        Check if text matches known generic reference patterns.
+
+        This is a fast pre-check to avoid expensive API calls for phrases
+        like "the company" that are unlikely to have Wikidata entries.
+        """
+        text_lower = text.lower().strip()
+        generic_patterns = [
+            # ORG patterns
+            "the company", "the firm", "the corporation", "the organization",
+            "the business", "the enterprise", "the tech giant", "the startup",
+            # PERSON patterns
+            "the founder", "the ceo", "the executive", "the entrepreneur",
+            # LOC patterns
+            "the city", "the country", "the state", "the region",
+        ]
+        return text_lower in generic_patterns
+
     def _create_unresolved(self, text: str, reason: str, log: List = []) -> ResolvedEntity:
+        """
+        Create an unresolved entity result.
+
+        Note: Before returning UNRESOLVED, the caller should have attempted
+        coreference resolution if EntityContext is available.
+        """
         return ResolvedEntity(
             text=text,
             entity_id="",

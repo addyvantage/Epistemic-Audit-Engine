@@ -12,9 +12,9 @@ from claim_extractor import ClaimExtractor
 from entity_linker import EntityLinker
 from evidence_retriever import EvidenceRetriever
 from claim_verifier import ClaimVerifier
-from claim_verifier import ClaimVerifier
 from hallucination_detector import HallucinationDetector
 from risk_aggregator import RiskAggregator
+from entity_context import EntityContext
 
 class AuditPipeline:
     def __init__(self, config_path: str = None):
@@ -96,11 +96,45 @@ class AuditPipeline:
         p1 = self.extractor.extract(text)
         p1["pipeline_config"] = pipeline_config
         p1["metadata"]["mode"] = mode
-        
-        # Phase 2: Linking
+
+        # Phase 1.5: Initialize Entity Context (v1.4)
+        # The EntityContext tracks named entities across the document for coreference resolution.
+        # This enables generic references like "the company" to resolve to previously mentioned entities.
+        entity_context = EntityContext()
+        self.linker.set_context(entity_context)
+
+        # Phase 2: Linking with Entity Context
         print("Phase 2: Linking...")
-        p2 = self.linker.link_claims(p1)
+
+        # Two-pass linking for coreference support:
+        # Pass 1: Link claims to gather named entities
+        # Pass 2: Entity context is populated, coreference can resolve generic references
+        #
+        # Implementation: We process claims in order, registering resolved entities
+        # to the context after each claim. This allows later claims to reference
+        # entities introduced earlier in the document.
+        linked_claims = []
+        for claim in p1.get("claims", []):
+            # Link this claim (may use context for generic references)
+            linked_result = self.linker.link_claims({"claims": [claim]})
+            linked_claim = linked_result["claims"][0]
+
+            # Register resolved entities to context for subsequent claims
+            subj_ent = linked_claim.get("subject_entity", {})
+            if subj_ent.get("resolution_status") in ["RESOLVED", "RESOLVED_SOFT"]:
+                entity_context.register_entity(subj_ent, claim.get("sentence_id", 0))
+
+            obj_ent = linked_claim.get("object_entity", {})
+            if obj_ent and obj_ent.get("resolution_status") in ["RESOLVED", "RESOLVED_SOFT"]:
+                entity_context.register_entity(obj_ent, claim.get("sentence_id", 0))
+
+            linked_claims.append(linked_claim)
+
+        p2 = {"claims": linked_claims, "metadata": p1.get("metadata", {})}
         p2["pipeline_config"] = pipeline_config
+
+        # Clear context after linking (optional, for memory)
+        self.linker.clear_context()
         
         # Phase 3: Evidence
         print("Phase 3: Evidence...")
@@ -154,7 +188,7 @@ class AuditPipeline:
             # Stabilization Logic (Fix 3 & 5)
             verdict = claim.get("verification", {}).get("verdict")
             subj = claim.get("subject_entity", {})
-            is_resolved = subj.get("resolution_status") in ["RESOLVED", "RESOLVED_SOFT"]
+            is_resolved = subj.get("resolution_status") in ["RESOLVED", "RESOLVED_SOFT", "RESOLVED_COREF"]
             
             canonical_predicates = ["founded", "founder", "launched", "released", "created", "born", "died", "established", "inception"]
             is_canonical = any(k in claim.get("predicate", "").lower() for k in canonical_predicates)
@@ -187,9 +221,10 @@ class AuditPipeline:
             subj = c.get("subject_entity", {})
             obj = c.get("object_entity", {})
             
-            # Key based on IDs if resolved, else text
-            sid = subj.get("entity_id") if subj.get("resolution_status") in ["RESOLVED", "RESOLVED_SOFT"] else c.get("subject", "").lower()
-            oid = obj.get("entity_id") if obj and obj.get("resolution_status") in ["RESOLVED", "RESOLVED_SOFT"] else c.get("object", "").lower()
+            # Key based on IDs if resolved, else text (v1.4: include RESOLVED_COREF)
+            valid_statuses = ["RESOLVED", "RESOLVED_SOFT", "RESOLVED_COREF"]
+            sid = subj.get("entity_id") if subj.get("resolution_status") in valid_statuses else c.get("subject", "").lower()
+            oid = obj.get("entity_id") if obj and obj.get("resolution_status") in valid_statuses else c.get("object", "").lower()
             pred = c.get("predicate", "").lower()
             
             key = (sid, pred, oid)

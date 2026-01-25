@@ -2,11 +2,15 @@ from typing import Dict, Any, List
 import re
 from nli_engine import NLIEngine
 from backend.hallucination_detector import HallucinationDetector
+from alignment_scorer import AlignmentScorer
+from hallucination_attributor import HallucinationAttributor
 
 class ClaimVerifier:
     def __init__(self):
         self.nli = NLIEngine()
         self.detector = HallucinationDetector()
+        self.alignment_scorer = AlignmentScorer()
+        self.attributor = HallucinationAttributor()
         
         # v1.3.1 Canonical Restoration
         self.CANONICAL_PRED_MAP = {
@@ -72,9 +76,14 @@ class ClaimVerifier:
         best_support_score = 0.0
         best_refute_score = 0.0
         best_evidence_item = None
-        
+
         has_direct_support = False
         has_contradiction = False
+
+        # Weak support accumulation (v1.4)
+        # Track weak support for evidence that provides partial corroboration
+        weak_support_count = 0
+        weak_support_total_score = 0.0
         
         for ev in valid_evidence:
             source = ev.get("source")
@@ -102,39 +111,75 @@ class ClaimVerifier:
                  # But let's collect for transparency, but score is locked.
                  continue
 
-            # A. Wikidata Logic (Structured)
+            # A. Wikidata Logic (Structured) - Enhanced v1.4
+            # Structured Evidence Independence: Wikidata evidence can independently
+            # yield SUPPORTED when alignment metadata confirms the match.
             if source == "WIKIDATA":
-                # Check for Refutation
-                is_refutation = False
-                obj_match = alignment.get("object_match")
-                is_entity_val = val.startswith("Q") and val[1].isdigit() if val else False
-                
-                if claim.get("claim_type") == "RELATION" and obj_match is False:
-                    # Only refute if evidence provides a conflicting Entity
-                    if is_entity_val and not val.startswith("+"):
-                         is_refutation = True
-                         refuting_ids.append(ev.get("evidence_id"))
-                
-                elif alignment.get("temporal_match") is False:
-                     c_val = claim.get("object", "")
-                     if not self._temporal_compatible(c_val, val):
-                         is_refutation = True
-                         refuting_ids.append(ev.get("evidence_id"))
+                # Extract alignment fields
+                s_match = alignment.get("subject_match", False)
+                p_match = alignment.get("predicate_match", False)
+                o_match = alignment.get("object_match")
+                t_match = alignment.get("temporal_match")
 
-                if not is_refutation:
-                    # Supports
-                    supporting_ids.append(ev.get("evidence_id"))
-                    has_direct_support = True
-                    # Structured evidence is strong
-                    if 0.9 > best_support_score:
-                        best_support_score = 0.9
-                        best_evidence_item = ev
+                # Check for contradiction - but be conservative
+                # Only mark as refutation for clear temporal mismatches
+                is_refutation = False
+
+                # Temporal contradiction: claim says year X, evidence says year Y
+                # This is the most reliable type of structured contradiction
+                if t_match is False:
+                    c_val = claim.get("object", "")
+                    if not self._temporal_compatible(c_val, val):
+                        is_refutation = True
+                        refuting_ids.append(ev.get("evidence_id"))
+
+                # NOTE: We do NOT treat object_match=False as a contradiction for
+                # entity-valued properties (Qxxx values) because:
+                # 1. Entity hierarchies exist (Mountain View is IN California)
+                # 2. String matching "California" vs "Q486860" is not semantic
+                # 3. False positives are worse than false negatives for refutation
+                #
+                # object_match=False for entity values is treated as NEUTRAL, not contradiction
+
+                if is_refutation:
+                    has_contradiction = True
+                    if best_refute_score < 0.9:
+                        best_refute_score = 0.9
+
+                # Structured Evidence Independence Rule (v1.4):
+                # If subject AND predicate match, and we have positive object/temporal match,
+                # this is DIRECT STRUCTURED SUPPORT regardless of narrative evidence.
+                elif s_match and p_match:
+                    is_positive_match = (o_match is True) or (t_match is True)
+
+                    if is_positive_match:
+                        # Full structured support
+                        supporting_ids.append(ev.get("evidence_id"))
+                        has_direct_support = True
+                        # Structured evidence caps at CONFIDENCE_CAP_STRUCTURED (0.85)
+                        from config.core_config import CONFIDENCE_CAP_STRUCTURED
+                        if CONFIDENCE_CAP_STRUCTURED > best_support_score:
+                            best_support_score = CONFIDENCE_CAP_STRUCTURED
+                            best_evidence_item = ev
+                            best_evidence_item["support_type"] = "STRUCTURED_INDEPENDENT"
+
+                    elif o_match is None and t_match is None:
+                        # Subject and predicate match, but can't verify object/temporal
+                        # This is still supportive for general facts
+                        supporting_ids.append(ev.get("evidence_id"))
+                        has_direct_support = True
+                        if 0.75 > best_support_score:
+                            best_support_score = 0.75
+                            best_evidence_item = ev
+                            best_evidence_item["support_type"] = "STRUCTURED_PARTIAL"
+
+                    # o_match=False with entity values: treat as neutral, not contradiction
+                    # The claim may still be true but we can't verify it from this property
 
             # B. Wikipedia Logic (Textual -> NLI)
             elif source == "WIKIPEDIA":
                 sent_text = ev.get("sentence", "") or ev.get("snippet", "")
                 claim_text = claim.get("claim_text", "")
-                similarity_score = ev.get("score", 0.0)
                 
                 if not sent_text: continue
 
@@ -143,35 +188,43 @@ class ClaimVerifier:
                     nli_result = self.nli.classify(sent_text, claim_text)
                 else:
                     # Fallback only on high similarity
+                    similarity_score = ev.get("score", 0.0)
                     if similarity_score > 0.8:
                         nli_result["entailment"] = 0.8
                 
-                # Tiered Verification Logic
-                # Strong Support: High Sim + Entailment
-                if (similarity_score >= 0.85 and nli_result["entailment"] > 0.5) or \
-                   (similarity_score >= 0.75 and nli_result["entailment"] > 0.8) or \
-                   (similarity_score >= 0.92): # Very high cosine similarity implies entailment usually
-                    
+                # Use AlignmentScorer (Strict)
+                alignment = self.alignment_scorer.score_alignment(claim_text, ev, nli_result)
+                signal = alignment["signal"]
+                score = alignment["score"]
+                
+                if signal == "SUPPORT":
                     supporting_ids.append(ev.get("evidence_id"))
                     has_direct_support = True
-                    
-                    combined_score = (similarity_score + nli_result["entailment"]) / 2
-                    if combined_score > best_support_score:
-                        best_support_score = combined_score
+                    if score > best_support_score:
+                        best_support_score = score
                         best_evidence_item = ev
-
-                # Contradiction
-                elif nli_result["contradiction"] > 0.75:
+                        
+                elif signal == "CONTRADICTION":
                     refuting_ids.append(ev.get("evidence_id"))
                     has_contradiction = True
-                    if nli_result["contradiction"] > best_refute_score:
-                         best_refute_score = nli_result["contradiction"]
-                
-                # Weak/Partial Support (for UNCERTAIN vs REFUTED fallback)
-                elif similarity_score > 0.65:
-                     # Keep track but don't mark verified yet?
-                     # Actually, we treat this as "Uncertain" bin usually.
-                     pass
+                    if score > best_refute_score:
+                        best_refute_score = score
+                        
+                    # Attribute Hallucination
+                    h_flag = self.attributor.attribute(alignment, ev)
+                    if h_flag:
+                        # Append to claim hallucinations immediately or later? 
+                        # We need a list to collect them. 'hallucinations' is overwritten later.
+                        # Let's add to a temporary list 'textual_hallucinations' to merge later.
+                        if "textual_hallucinations" not in claim: claim["textual_hallucinations"] = []
+                        claim["textual_hallucinations"].append(h_flag)
+                        
+                elif signal == "WEAK_SUPPORT":
+                    # Weak Support Accumulation (v1.4)
+                    # Track weak support for claims with multiple partial corroborations
+                    # Multiple weak supports may upgrade INSUFFICIENT to UNCERTAIN
+                    weak_support_count += 1
+                    weak_support_total_score += score
 
         # v1.3.1 KG FALLBACK VERIFICATION (Rule C1/C2)
         # If no narrative evidence and no direct support yet, check Wikidata Canonical Properties explicitly.
@@ -187,7 +240,7 @@ class ClaimVerifier:
             
             # 2. Asserted & Resolved Check
             is_asserted = claim.get("epistemic_status", "ASSERTED") == "ASSERTED"
-            is_resolved = claim.get("subject_entity", {}).get("resolution_status") in ["RESOLVED", "RESOLVED_SOFT"]
+            is_resolved = claim.get("subject_entity", {}).get("resolution_status") in ["RESOLVED", "RESOLVED_SOFT", "RESOLVED_COREF"]
             
             if target_prop and is_asserted and is_resolved:
                 # 3. Scan Wikidata Evidence for Property Match
@@ -206,6 +259,11 @@ class ClaimVerifier:
         
         # --- HALLUCINATION DETECTION (PHASE 8) ---
         hallucinations = self.detector.detect(claim, evidence)
+        
+        # Merge Textual Hallucinations (Phase 4.2)
+        if "textual_hallucinations" in claim:
+            hallucinations.extend(claim.pop("textual_hallucinations"))
+
         critical_hallucinations = [h for h in hallucinations if h.get("severity") == "CRITICAL"]
         non_critical_hallucinations = [h for h in hallucinations if h.get("severity") == "NON_CRITICAL"]
         
@@ -247,8 +305,23 @@ class ClaimVerifier:
         # 4. Support
         elif has_direct_support:
             final_verdict = "SUPPORTED"
-            confidence = min(0.99, max(0.95 if best_evidence_item.get("source") == "PRIMARY_DOCUMENT" else 0.85, best_support_score))
             
+            # --- CONFIDENCE CAPPING (Modality-Based) ---
+            from config.core_config import CONFIDENCE_CAP_STRUCTURED, CONFIDENCE_CAP_PRIMARY
+            
+            raw_confidence = min(0.99, best_support_score)
+            modality = best_evidence_item.get("modality", "TEXTUAL")
+            source = best_evidence_item.get("source")
+            
+            # Apply Caps
+            if source == "PRIMARY_DOCUMENT":
+                confidence = min(raw_confidence, CONFIDENCE_CAP_PRIMARY)
+            elif source == "WIKIDATA" or modality == "STRUCTURED":
+                confidence = min(raw_confidence, CONFIDENCE_CAP_STRUCTURED)
+            else:
+                # Textual Wikipedia
+                confidence = raw_confidence
+
             # Dynamic Reasoning
             src = best_evidence_item.get("source")
             if src == "PRIMARY_DOCUMENT":
@@ -265,17 +338,34 @@ class ClaimVerifier:
                 snippet_preview = (snippet[:100] + '...') if len(snippet) > 100 else snippet
                 reasoning = f"Verified by Wikipedia: \"{snippet_preview}\""
         
-        # 5. Insufficient
+        # 5. Insufficient - with Weak Support Accumulation (v1.4)
         else:
-             final_verdict = "INSUFFICIENT_EVIDENCE"
-             if not valid_evidence and evidence.get("grokipedia"):
-                 reasoning = "Only narrative evidence available (Grokipedia)."
-             else:
-                 has_weak = any(ev.get("score", 0) > 0.6 for ev in evidence.get("wikipedia", []))
-                 if has_weak:
-                      reasoning = "Evidence found but insufficient for verification."
-                 else:
-                      reasoning = "No relevant evidence found."
+            final_verdict = "INSUFFICIENT_EVIDENCE"
+            if not valid_evidence and evidence.get("grokipedia"):
+                reasoning = "Only narrative evidence available (Grokipedia)."
+            else:
+                has_weak = any(ev.get("score", 0) > 0.6 for ev in evidence.get("wikipedia", []))
+                if has_weak:
+                    reasoning = "Evidence found but insufficient for verification."
+                else:
+                    reasoning = "No relevant evidence found."
+
+            # Weak Support Accumulation Rule (v1.4):
+            # If we have multiple weak supports converging AND no contradictions,
+            # upgrade INSUFFICIENT_EVIDENCE to UNCERTAIN (not SUPPORTED).
+            # This represents "suggestive but not conclusive" evidence.
+            #
+            # Epistemic Note: This does NOT inflate support rates - it honestly
+            # represents cases where evidence exists but doesn't meet SUPPORTED thresholds.
+            if weak_support_count >= 2 and not has_contradiction:
+                avg_weak_score = weak_support_total_score / weak_support_count
+                if avg_weak_score >= 0.68:  # Slightly above WEAK threshold
+                    final_verdict = "UNCERTAIN"
+                    confidence = 0.5
+                    reasoning = (
+                        f"Multiple weak corroborations ({weak_support_count} sources, "
+                        f"avg score {avg_weak_score:.2f}). Suggestive but not conclusive."
+                    )
         
         # FIX 2: Verdict-Hallucination Consistency (Normalization)
         # If verdict is SUPPORTED, ensure no hallucinations remain.
