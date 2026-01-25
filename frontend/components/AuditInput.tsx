@@ -31,12 +31,15 @@ export function AuditInput({ onAudit, isLoading }: AuditInputProps) {
                 {...({
                     initial: false,
                     animate: {
-                        borderColor: isFocused ? 'rgba(203, 213, 225, 1)' : 'rgba(226, 232, 240, 1)',
+                        borderColor: isFocused
+                            ? 'rgba(16, 185, 129, 0.4)' // Emerald focus ring for terminal feel
+                            : 'rgba(226, 232, 240, 0.1)',
                         boxShadow: isFocused
-                            ? '0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 0 0 4px rgba(226, 232, 240, 0.4)'
-                            : '0 1px 2px 0 rgba(0, 0, 0, 0.05)'
+                            ? '0 0 0 1px rgba(16, 185, 129, 0.4), 0 10px 40px -10px rgba(0,0,0,0.5)' // Glow
+                            : '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
                     },
-                    className: "relative bg-white rounded-2xl border overflow-hidden transition-all duration-300 ease-out"
+                    // Glassmorphism card: Premium Dark Mode
+                    className: "relative bg-white dark:bg-white/[0.02] dark:backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-white/5 overflow-hidden transition-all duration-500 ease-out shadow-lg dark:shadow-none"
                 } as any)}
             >
                 {/* Scrollable Input Area */}
@@ -47,13 +50,13 @@ export function AuditInput({ onAudit, isLoading }: AuditInputProps) {
                         onFocus={() => setIsFocused(true)}
                         onBlur={() => setIsFocused(false)}
                         placeholder="Paste AI-generated or analytical text to audit..."
-                        className="w-full min-h-[224px] p-6 pb-20 bg-transparent border-none resize-none text-lg text-slate-800 outline-none placeholder:text-slate-300 font-sans leading-relaxed"
+                        className="w-full min-h-[224px] p-6 pb-20 bg-transparent border-none resize-none text-lg text-slate-800 dark:text-slate-200 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-600 font-sans leading-relaxed selection:bg-emerald-500/30 selection:text-emerald-200"
                         disabled={isLoading}
                     />
                 </div>
 
                 {/* Fixed Footer Actions */}
-                <div className="absolute bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t border-slate-100 flex items-center justify-between z-20">
+                <div className="absolute bottom-0 left-0 right-0 p-4 bg-white/80 dark:bg-white/10 backdrop-blur-md border-t border-slate-100 dark:border-white/5 flex items-center justify-between z-20">
                     <div className="flex items-center gap-2 pl-2">
                         <span className={`text-[11px] font-mono font-medium transition-colors duration-300 ${counterColor}`}>
                             <AnimatePresence mode="wait">
@@ -77,11 +80,10 @@ export function AuditInput({ onAudit, isLoading }: AuditInputProps) {
                             disabled: !text.trim() || isLoading,
                             whileHover: !isLoading && text.trim() ? {
                                 y: -1,
-                                boxShadow: '0 4px 12px rgba(15, 23, 42, 0.15)',
-                                backgroundColor: '#1e293b'
+                                boxShadow: '0 4px 20px rgba(16, 185, 129, 0.2)',
                             } : {},
                             whileTap: !isLoading && text.trim() ? { scale: 0.97 } : {},
-                            className: "inline-flex items-center justify-center px-6 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-xl disabled:opacity-30 disabled:pointer-events-none transition-colors shadow-lg shadow-slate-900/10"
+                            className: "inline-flex items-center justify-center px-6 py-2.5 bg-slate-900 dark:bg-emerald-600 text-white text-sm font-medium tracking-wide rounded-xl disabled:opacity-30 disabled:pointer-events-none transition-all shadow-lg shadow-slate-900/10 dark:shadow-none hover:dark:bg-emerald-500"
                         } as any)}
                     >
                         {isLoading ? (
@@ -95,6 +97,6 @@ export function AuditInput({ onAudit, isLoading }: AuditInputProps) {
                     </motion.button>
                 </div>
             </motion.div>
-        </form>
+        </form >
     )
 }

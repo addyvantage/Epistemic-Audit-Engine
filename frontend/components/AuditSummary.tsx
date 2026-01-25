@@ -20,18 +20,18 @@ export function AuditSummary({ overallRisk, hallucinationScore, summary }: Audit
     const supported = summary.Verified || 0
 
     return (
-        <div className="w-full p-8 rounded-xl border border-slate-100 bg-white shadow-sm grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
+        <div className="w-full p-8 rounded-xl border border-slate-100 dark:border-border-subtle bg-white dark:bg-charcoal shadow-sm grid grid-cols-1 md:grid-cols-3 gap-8 items-center transition-colors duration-500">
 
             {/* 1. Risk Badge */}
-            <div className="flex flex-col justify-center border-r border-slate-100 pr-8">
-                <div className="text-xs font-mono uppercase tracking-widest text-slate-400 mb-2 font-semibold">Epistemic Risk</div>
+            <div className="flex flex-col justify-center border-r border-slate-100 dark:border-border-subtle pr-8">
+                <div className="text-xs font-mono uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2 font-semibold">Epistemic Risk</div>
                 <div className={`inline-flex items-center justify-center py-3 px-6 rounded-lg text-2xl font-bold tracking-tight border shadow-sm ${riskColors[overallRisk]}`}>
                     {overallRisk}
                 </div>
             </div>
 
             {/* 2. Score with Tooltip */}
-            <div className="flex flex-col justify-center border-r border-slate-100 pr-8 relative">
+            <div className="flex flex-col justify-center border-r border-slate-100 dark:border-border-subtle pr-8 relative">
                 <div className="text-xs font-mono uppercase tracking-widest text-slate-400 mb-2 font-semibold flex items-center gap-2 group cursor-help relative w-fit">
                     Risk Score
                     <Info className="w-3 h-3 text-slate-300 group-hover:text-slate-500 transition-colors" />
@@ -48,14 +48,14 @@ export function AuditSummary({ overallRisk, hallucinationScore, summary }: Audit
                 </div>
 
                 <div className="flex items-baseline gap-2">
-                    <span className="text-4xl font-bold text-slate-900 tracking-tighter">
+                    <span className="text-4xl font-bold text-slate-900 dark:text-slate-100 tracking-tighter">
                         {hallucinationScore.toFixed(2)}
                     </span>
                     <span className="text-sm text-slate-400 font-medium">/ 1.00</span>
                 </div>
-                <div className="mt-2 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                <div className="mt-2 h-1.5 w-full bg-slate-100 dark:bg-graphite rounded-full overflow-hidden">
                     <div
-                        className="h-full bg-slate-900 rounded-full transition-all duration-1000 ease-out"
+                        className="h-full bg-slate-900 dark:bg-emerald-500 rounded-full transition-all duration-1000 ease-out"
                         style={{ width: `${hallucinationScore * 100}%` }}
                     />
                 </div>
@@ -63,21 +63,21 @@ export function AuditSummary({ overallRisk, hallucinationScore, summary }: Audit
 
             {/* 3. Stats Grid */}
             <div className="grid grid-cols-2 gap-4">
-                <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                <div className="bg-slate-50 dark:bg-graphite p-3 rounded-lg border border-slate-100 dark:border-border-subtle">
                     <div className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mb-1">Claims</div>
-                    <div className="text-xl font-bold text-slate-800">{totalClaims}</div>
+                    <div className="text-xl font-bold text-slate-800 dark:text-slate-200">{totalClaims}</div>
                 </div>
-                <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                <div className="bg-slate-50 dark:bg-graphite p-3 rounded-lg border border-slate-100 dark:border-border-subtle">
                     <div className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mb-1">Verified</div>
                     <div className="text-xl font-bold text-green-700">{supported}</div>
                 </div>
-                <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                <div className="bg-slate-50 dark:bg-graphite p-3 rounded-lg border border-slate-100 dark:border-border-subtle">
                     <div className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mb-1">Refuted</div>
-                    <div className="text-xl font-bold text-red-700">{summary.Refuted || 0}</div>
+                    <div className="text-xl font-bold text-red-700 dark:text-red-400">{summary.Refuted || 0}</div>
                 </div>
-                <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                <div className="bg-slate-50 dark:bg-graphite p-3 rounded-lg border border-slate-100 dark:border-border-subtle">
                     <div className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mb-1">Uncertain</div>
-                    <div className="text-xl font-bold text-amber-700">{summary.Uncertain || 0}</div>
+                    <div className="text-xl font-bold text-amber-700 dark:text-amber-400">{summary.Uncertain || 0}</div>
                 </div>
             </div>
 

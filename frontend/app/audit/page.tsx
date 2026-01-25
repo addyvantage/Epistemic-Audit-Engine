@@ -65,22 +65,22 @@ export default function AuditPage() {
     }
 
     return (
-        <div className="min-h-screen bg-noise bg-slate-50 font-sans text-slate-900 pb-20">
+        <div className="min-h-screen bg-transparent font-sans text-slate-900 dark:text-slate-100 pb-20 transition-colors duration-500">
 
             {/* Top Bar (SaaS Identity) */}
             {/* Top Bar (Toolbar - Only in Results) */}
             {phase === "RESULTS" && (
-                <div className="h-16 flex items-center justify-end px-6 border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-30">
-                    <div className="flex bg-slate-100 rounded-lg p-1">
+                <div className="h-16 flex items-center justify-end px-6 border-b border-slate-200 dark:border-border-subtle bg-white/80 dark:bg-black/90 backdrop-blur-sm sticky top-0 z-30">
+                    <div className="flex bg-slate-100 dark:bg-white/[0.02] rounded-lg p-1">
                         <button
                             onClick={() => setMode("DEMO")}
-                            className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${mode === "DEMO" ? "bg-white shadow text-slate-900" : "text-slate-500 hover:text-slate-700"}`}
+                            className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${mode === "DEMO" ? "bg-white dark:bg-white/10 shadow text-slate-900 dark:text-slate-100" : "text-slate-500 dark:text-neutral-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
                         >
                             Demo
                         </button>
                         <button
                             onClick={() => setMode("RESEARCH")}
-                            className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${mode === "RESEARCH" ? "bg-white shadow text-slate-900" : "text-slate-500 hover:text-slate-700"}`}
+                            className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${mode === "RESEARCH" ? "bg-white dark:bg-white/[0.08] shadow text-slate-900 dark:text-slate-100" : "text-slate-500 dark:text-neutral-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
                         >
                             Research
                         </button>
@@ -94,8 +94,8 @@ export default function AuditPage() {
                 {phase === "INPUT" && (
                     <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-3xl mx-auto pt-10">
                         <div className="text-center mb-12">
-                            <h1 className="text-4xl font-bold text-slate-900 tracking-tight mb-4">Initialize Audit</h1>
-                            <p className="text-xl text-slate-500 font-light">
+                            <h1 className="text-3xl md:text-4xl font-medium text-slate-900 dark:text-transparent dark:bg-clip-text dark:bg-gradient-to-r dark:from-slate-50 dark:via-slate-300 dark:to-slate-50 animate-text-shimmer tracking-[-0.035em] mb-4">Initialize Audit</h1>
+                            <p className="text-xl text-slate-500 dark:text-slate-400 font-light">
                                 Input text for epistemic verification.
                             </p>
                         </div>
@@ -103,7 +103,7 @@ export default function AuditPage() {
                         <AuditInput onAudit={handleAudit} isLoading={false} />
 
                         {error && (
-                            <div className="mt-8 p-4 bg-red-50 text-red-700 rounded-lg text-center border border-red-100 text-sm">
+                            <div className="mt-8 p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg text-center border border-red-100 dark:border-red-800 text-sm">
                                 {error}
                             </div>
                         )}
@@ -114,11 +114,11 @@ export default function AuditPage() {
                 {phase === "PROCESSING" && (
                     <div className="flex flex-col items-center justify-center pt-32 animate-in fade-in duration-700">
                         <div className="relative w-16 h-16 mb-8 group">
-                            <div className="absolute inset-0 bg-slate-200 rounded-full blur-xl opacity-50 group-hover:opacity-75 transition-opacity duration-1000"></div>
-                            <Loader2 className="w-16 h-16 text-slate-900 animate-spin relative z-10" />
+                            <div className="absolute inset-0 bg-slate-200 dark:bg-white/5 rounded-full blur-xl opacity-50 group-hover:opacity-75 transition-opacity duration-1000"></div>
+                            <Loader2 className="w-16 h-16 text-slate-900 dark:text-slate-100 animate-spin relative z-10" />
                         </div>
-                        <p className="text-lg font-medium text-slate-900 mb-2 animate-pulse">{loadingMsg}</p>
-                        <p className="text-sm text-slate-400 font-mono">Running logic checks...</p>
+                        <p className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2 animate-pulse">{loadingMsg}</p>
+                        <p className="text-sm text-slate-400 dark:text-slate-500 font-mono">Running logic checks...</p>
                     </div>
                 )}
 
@@ -128,14 +128,14 @@ export default function AuditPage() {
 
                         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                             <div>
-                                <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Audit Report</h2>
+                                <h2 className="text-2xl font-medium text-slate-900 dark:text-slate-50 tracking-[-0.03em]">Audit Report</h2>
                                 <p className="text-slate-400 text-xs mt-1">v1.6.2 Epistemic Interface</p>
                             </div>
                             <div className="flex items-center gap-4">
                                 <ExplainabilityToggle mode={explainabilityMode} onChange={setExplainabilityMode} />
                                 <button
                                     onClick={() => { setResult(null); setPhase("INPUT"); setSelectedClaimId(null); }}
-                                    className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors underline underline-offset-4"
+                                    className="text-sm font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors underline underline-offset-4"
                                 >
                                     New Audit
                                 </button>
@@ -144,7 +144,7 @@ export default function AuditPage() {
 
                         {/* Dominant Summary Card */}
                         <div className="relative">
-                            <div className="absolute -inset-4 bg-slate-200/50 rounded-3xl blur-2xl -z-10" />
+                            <div className="absolute -inset-4 bg-slate-200/50 dark:bg-white/[0.02] rounded-3xl blur-2xl -z-10" />
                             {(() => {
 
                                 // Use Backend Values Directly (Canonical Contract v1.3.9)
@@ -173,7 +173,7 @@ export default function AuditPage() {
                                         />
                                         {finalScore === 0 && normalizedSummary.Uncertain > 0 && (
                                             <div className="mt-2 text-center">
-                                                <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">
+                                                <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded border border-amber-100 dark:border-amber-900/50">
                                                     Risk is driven by uncertainty, not verified correctness.
                                                 </span>
                                             </div>
@@ -184,12 +184,12 @@ export default function AuditPage() {
                         </div>
 
                         {/* Evidence / Document View */}
-                        <div className="bg-[#fafafa] rounded-none md:rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+                        <div className="bg-[#fafafa] dark:bg-black rounded-none md:rounded-xl border border-slate-200 dark:border-border-subtle shadow-sm relative overflow-hidden">
                             {/* Document Header */}
-                            <div className="px-8 py-6 border-b border-slate-200 bg-white flex items-center justify-between">
+                            <div className="px-8 py-6 border-b border-slate-200 dark:border-border-subtle bg-white dark:bg-black flex items-center justify-between">
                                 <div className="text-xs font-mono uppercase tracking-widest text-slate-400 font-bold">Source Document</div>
                                 {mode === "RESEARCH" && (
-                                    <div className="flex gap-4 text-[10px] uppercase font-mono text-slate-500">
+                                    <div className="flex gap-4 text-[10px] uppercase font-mono text-slate-500 dark:text-slate-400">
                                         <span>H1: Unsupported</span>
                                         <span>H3: Overconfidence</span>
                                         <span>H5: Inconsistent</span>
@@ -199,7 +199,7 @@ export default function AuditPage() {
 
                             {/* The Paper - CONSTRAINED HEIGHT */}
                             <div className="flex flex-col lg:flex-row">
-                                <div className="flex-1 py-12 px-8 md:px-12 bg-white shadow-sm border-r border-slate-100 max-h-[600px] overflow-y-auto">
+                                <div className="flex-1 py-12 px-8 md:px-12 bg-white dark:bg-black shadow-sm border-r border-slate-100 dark:border-border-subtle max-h-[600px] overflow-y-auto">
                                     <AuditedText
                                         sourceText={sourceText}
                                         claims={result.claims}
@@ -209,7 +209,7 @@ export default function AuditPage() {
                                         explainabilityMode={explainabilityMode}
                                     />
                                 </div>
-                                <div className="w-full lg:w-80 bg-slate-50/30 p-6 flex flex-col gap-6 overflow-y-auto max-h-[600px]">
+                                <div className="w-full lg:w-80 bg-slate-50/30 dark:bg-white/[0.02] p-6 flex flex-col gap-6 overflow-y-auto max-h-[600px]">
                                     <TimelineView
                                         claims={result.claims}
                                         onClaimClick={setSelectedClaimId}
@@ -217,8 +217,8 @@ export default function AuditPage() {
                                         explainabilityMode={explainabilityMode}
                                     />
 
-                                    <div className="p-4 bg-white border border-slate-200 rounded-lg text-xs text-slate-500 leading-relaxed shadow-sm">
-                                        <b className="text-slate-700 block mb-1">Timeline Insights</b>
+                                    <div className="p-4 bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 rounded-lg text-xs text-slate-500 dark:text-neutral-400 leading-relaxed shadow-sm">
+                                        <b className="text-slate-700 dark:text-slate-300 block mb-1">Timeline Insights</b>
                                         Nodes represent atomic claims in order of appearance. Click a node to scroll/inspect.
                                     </div>
                                 </div>

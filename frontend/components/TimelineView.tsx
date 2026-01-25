@@ -40,11 +40,11 @@ export function TimelineView({ claims, onClaimClick, activeClaimId, explainabili
     }
 
     return (
-        <div className="w-full bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
+        <div className="w-full bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 rounded-lg flex flex-col overflow-hidden transition-colors duration-500">
             {/* 1. Header (Research Grade) */}
-            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] transition-colors duration-500">
                 <div className="flex items-baseline justify-between">
-                    <h3 className="text-sm font-semibold text-slate-800 tracking-tight">
+                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 tracking-tight">
                         Epistemic Timeline
                     </h3>
                     <span className="text-[10px] text-slate-400 font-mono">
@@ -61,7 +61,7 @@ export function TimelineView({ claims, onClaimClick, activeClaimId, explainabili
             <div className="relative overflow-x-auto overflow-y-hidden px-6 pt-14 pb-8 custom-scrollbar">
                 <div className="flex items-center gap-10 min-w-max relative z-0">
                     {/* Neutral Connecting Line */}
-                    <div className="absolute top-2 left-0 right-0 h-px bg-slate-200 -z-10" />
+                    <div className="absolute top-2 left-0 right-0 h-px bg-slate-200 dark:bg-white/10 -z-10" />
 
                     {sortedClaims.map((claim, idx) => {
                         const isActive = activeClaimId === claim.claim_id
@@ -88,7 +88,7 @@ export function TimelineView({ claims, onClaimClick, activeClaimId, explainabili
                                         focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400
                                         hover:scale-110 active:scale-95 cursor-pointer
                                         ${getVerdictColor(verdict)}
-                                        ${isActive ? 'ring-2 ring-offset-2 ring-slate-800 scale-110' : ''}
+                                        ${isActive ? 'ring-2 ring-offset-2 ring-neutral-800 scale-110' : 'opacity-80 hover:opacity-100'}
                                     `}
                                 />
 
@@ -119,7 +119,7 @@ export function TimelineView({ claims, onClaimClick, activeClaimId, explainabili
             </div>
 
             {/* 3. Legend (Sentence Case, Muted) */}
-            <div className="border-t border-slate-100 bg-slate-50/50 px-6 py-3 flex justify-center gap-8">
+            <div className="border-t border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 px-6 py-3 flex justify-center gap-8 transition-colors duration-500">
                 <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-emerald-600" />
                     <span className="text-[11px] text-slate-500 font-medium">Supported</span>
