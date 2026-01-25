@@ -267,6 +267,7 @@ class ClaimVerifier:
         
         # 5. Insufficient
         else:
+             final_verdict = "INSUFFICIENT_EVIDENCE"
              if not valid_evidence and evidence.get("grokipedia"):
                  reasoning = "Only narrative evidence available (Grokipedia)."
              else:
