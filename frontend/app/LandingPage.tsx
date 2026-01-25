@@ -82,7 +82,8 @@ function useGuidedCursor(
 // Section 1: Hero
 const HeroSection = () => {
     return (
-        <section className="min-h-screen flex flex-col items-center justify-center text-center px-4 relative overflow-hidden bg-transparent">
+        <section className="min-h-screen flex flex-col items-center justify-center text-center px-4 relative overflow-hidden bg-white dark:bg-transparent">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(15,23,42,0.04),transparent_60%)] dark:hidden" />
 
             <div className="max-w-5xl mx-auto">
                 <motion.div
@@ -90,7 +91,7 @@ const HeroSection = () => {
                         initial: { opacity: 0, y: 12 },
                         animate: { opacity: 1, y: 0 },
                         transition: { duration: 0.6, ease: "easeOut" },
-                        className: "inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-white/[0.05] text-slate-600 dark:text-neutral-400 text-[11px] font-semibold tracking-wider uppercase mb-8 border border-slate-200 dark:border-white/10"
+                        className: "inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/80 dark:bg-white/[0.05] text-slate-700 dark:text-neutral-400 text-[11px] font-semibold tracking-wider uppercase mb-8 border border-slate-200 dark:border-white/10 backdrop-blur-xl"
                     } as any)}
                 >
                     <ShieldCheck className="w-3.5 h-3.5" />
@@ -102,7 +103,7 @@ const HeroSection = () => {
                         initial: { opacity: 0, y: 12 },
                         animate: { opacity: 1, y: 0 },
                         transition: { duration: 0.6, delay: 0.1, ease: "easeOut" },
-                        className: "text-4xl md:text-6xl font-medium tracking-[-0.04em] text-transparent bg-clip-text bg-gradient-to-b from-white via-neutral-200 to-neutral-400 drop-shadow-[0_0_15px_rgba(255,255,255,0.05)] mb-8 leading-[1.05]"
+                        className: "text-4xl md:text-6xl font-medium tracking-[-0.04em] leading-[1.05] mb-8 text-slate-900 dark:text-transparent dark:bg-clip-text dark:bg-gradient-to-b dark:from-white dark:via-neutral-200 dark:to-neutral-400 dark:drop-shadow-[0_0_15px_rgba(255,255,255,0.06)]"
                     } as any)}
                 >
                     Audit where AI confidence <br />
@@ -114,7 +115,7 @@ const HeroSection = () => {
                         initial: { opacity: 0, y: 12 },
                         animate: { opacity: 1, y: 0 },
                         transition: { duration: 0.6, delay: 0.18, ease: "easeOut" },
-                        className: "text-xl md:text-2xl text-slate-500 dark:text-slate-400 max-w-3xl mx-auto mb-12 leading-relaxed font-light"
+                        className: "text-xl md:text-2xl text-slate-600 dark:text-slate-400 max-w-3xl mx-auto mb-12 leading-relaxed font-light"
                     } as any)}
                 >
                     Not fact-checking. Not binary verification. <br className="hidden md:block" />
@@ -163,7 +164,7 @@ const HeroSection = () => {
                                 hover: { backgroundColor: "rgba(248, 250, 252, 0.8)" },
                                 tap: { scale: 0.98 }
                             }}
-                            className="group relative inline-flex items-center px-8 py-4 bg-transparent border border-slate-200 dark:border-white/10 text-slate-600 dark:text-neutral-400 rounded-full font-medium tracking-wide text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
+                            className="group relative inline-flex items-center px-8 py-4 bg-transparent border border-slate-300 dark:border-white/10 text-slate-700 dark:text-neutral-400 rounded-full font-medium tracking-wide text-sm transition-colors hover:bg-slate-50 dark:hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
                             aria-label="View methodology"
                             {...({} as any)}
                         >
@@ -554,28 +555,43 @@ const ShowcaseSection = () => {
                                     />
                                 </svg>
 
-                                <div className={`p-5 rounded-lg bg-neutral-900/90 backdrop-blur-md border shadow-2xl relative overflow-hidden transition-all duration-500 ${(isHighlightActive && current.targetId === 'CLAIM_REVENUE') ? `border-${current.color}-900/50` : 'border-neutral-800'}`}>
+                                <div className={`
+                                    p-5 rounded-2xl
+                                    bg-white/80 dark:bg-white/[0.06]
+                                    backdrop-blur-xl
+
+                                    border border-slate-200/60 dark:border-white/10
+
+                                    shadow-[0_20px_40px_rgba(0,0,0,0.12)]
+                                    dark:shadow-[0_20px_60px_rgba(0,0,0,0.6)]
+
+                                    text-slate-700 dark:text-neutral-200
+
+                                    transition-colors transition-shadow duration-300
+                                    relative overflow-hidden
+                                    ${(isHighlightActive && current.targetId === 'CLAIM_REVENUE') ? `border-emerald-500/50 dark:border-${current.color}-900/50` : ''}
+                                `}>
                                     <div role="note" className="space-y-4 relative z-10">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2.5">
-                                                <div className={`w-2 h-2 rounded-full bg-${current.color}-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]`} />
-                                                <span className="text-[10px] font-black text-slate-800 uppercase tracking-[0.15em]">{current.header}</span>
+                                                <div className={`w-2 h-2 rounded-full bg-${current.color}-500 shadow-[0_0_8px_rgba(16,185,129,0.15)] dark:shadow-[0_0_8px_rgba(16,185,129,0.3)]`} />
+                                                <span className="text-[10px] font-black text-slate-800 dark:text-neutral-100 uppercase tracking-[0.15em]">{current.header}</span>
                                             </div>
-                                            <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest">Step {activeStep + 1} of {stages.length}</span>
+                                            <span className="text-[9px] font-mono text-slate-400 dark:text-neutral-500 uppercase tracking-widest">Step {activeStep + 1} of {stages.length}</span>
                                         </div>
-                                        <p className="text-[13px] text-slate-600 leading-relaxed font-medium">{current.body}</p>
+                                        <p className="text-[13px] text-slate-600 dark:text-neutral-300 leading-relaxed font-medium">{current.body}</p>
                                         <motion.p
                                             key={`${activeStep}-note`}
                                             {...({
                                                 initial: { opacity: 0 },
                                                 animate: { opacity: 1 },
                                                 transition: { delay: 1.5, duration: 1 },
-                                                className: "text-[11px] text-slate-400 italic font-light"
+                                                className: "text-[11px] text-slate-400 dark:text-neutral-400 italic font-light"
                                             } as any)}
                                         >
                                             {current.microNote}
                                         </motion.p>
-                                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 italic text-[10px] text-slate-400/80">
+                                        <div className="pt-2 border-t border-slate-200/50 dark:border-white/5 italic text-[10px] text-slate-400 dark:text-neutral-500/80">
                                             {current.footer}
                                         </div>
                                         <div className="space-y-2 pt-1">
@@ -583,14 +599,14 @@ const ShowcaseSection = () => {
                                                 <span>Alignment Strength</span>
                                                 <span className={`text-${current.color}-600`}>Strong</span>
                                             </div>
-                                            <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden relative">
+                                            <div className="h-1.5 w-full bg-slate-200/70 dark:bg-white/10 rounded-full overflow-hidden relative">
                                                 <div className="absolute inset-0 bg-gradient-to-r from-red-500/20 via-yellow-500/20 to-emerald-500/20" />
                                                 <motion.div
                                                     {...({
                                                         initial: { width: 0 },
                                                         animate: { width: `${current.risk}%` },
                                                         transition: { duration: 0.8, delay: 0.2 },
-                                                        className: `h-full bg-gradient-to-r from-slate-200 to-${current.color}-500 relative z-10 opacity-80`
+                                                        className: `h-full bg-gradient-to-r from-slate-200 to-${current.color}-500 relative z-10 opacity-90`
                                                     } as any)}
                                                 />
                                             </div>
