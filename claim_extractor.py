@@ -264,6 +264,9 @@ class ClaimExtractor:
                 "epistemic_status": epistemic_status,
                 "raw_sentence": sent_obj["text"],
                 "is_derived": False,
+                "start_char": min_idx,
+                "end_char": max_idx,
+                "sentence_index": sent_obj["sentence_id"],
                 "span": {
                     "start": min_idx,
                     "end": max_idx,
@@ -451,6 +454,9 @@ class ClaimExtractor:
             "is_derived": True,
             "source_claim_id": parent_claim_id,
             "highlight_type": "IMPLICIT_FACT", # Fix 3
+            "start_char": sent.start_char,
+            "end_char": sent.end_char,
+            "sentence_index": sent_id,
             "span": {
                 "start": sent.start_char,
                 "end": sent.end_char,

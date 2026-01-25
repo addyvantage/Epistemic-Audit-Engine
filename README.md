@@ -29,6 +29,23 @@ As Large Language Models (LLMs) are increasingly integrated into critical workfl
 - **Hallucination Risk Scoring**: Calculates a normalized risk score (0.0–1.0) based on weighted failure signals.
 - **Evidence-Linked UI**: A React/Next.js interface that highlights claims and displays exact source snippets.
 
+### Detection Scope
+
+**What The System Detects:**
+- **Atomic Factual Errors**: Direct contradictions with Wikipedia/Wikidata evidence (e.g., wrong dates, wrong entities).
+- **Structural Hallucinations**: Universal claims without scope, impossible dosages, and entity role conflicts.
+- **Epistemic Overconfidence**: Asserting certainty ("definitely", "always") when evidence is weak.
+
+**What It Explicitly Does NOT Detect:**
+- **Reasoning Flaws**: It does not evaluate the logical coherence of arguments, only the factual basis of atomic premises.
+- **Style/Tone Issues**: It ignores sentiment unless it impacts factual integrity.
+- **Omission**: It cannot detect relevant facts that were *left out*, only errors in what was *included*.
+
+**Required Human Interpretation:**
+- Users must review the "Evidence Snippets" to validate the system's alignment.
+- High Risk scores indicate a *probability* of failure, requiring manual audit.
+- Zero Risk does not imply perfect truth, only alignment with available corpus data.
+
 ---
 
 ## Architecture

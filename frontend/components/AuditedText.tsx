@@ -40,6 +40,8 @@ export function AuditedText({ sourceText, claims, mode = "DEMO", selectedClaimId
         }, 100);
     };
 
+
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
@@ -149,37 +151,29 @@ export function AuditedText({ sourceText, claims, mode = "DEMO", selectedClaimId
         // This solves the greedy ordering problem where earlier claims in text 
         // are processed later in the array.
 
-        const preparedClaims = (claims || [])
-            .filter(isEligible)
+        // v1.7 FIX: Dual Mode Highlighting
+        // Mode A (Overview): No selection -> Show all eligible
+        // Mode B (Focus): Selection -> Show only selected
+
+        const claimsToRender = selectedClaimId
+            ? claims.filter(c => c.claim_id === selectedClaimId)
+            : claims.filter(isEligible);
+
+        const preparedClaims = claimsToRender
+            // We skip isEligible check ensures we can inspect even 'hidden' claims if explicitly selected
             .map(c => {
-                // Try Strict First
-                let start = -1
-                let end = -1
-
-                // We need to find the *first valid occurrence* that hasn't been used?
-                // Actually, finding ALL occurrences is hard without global index state.
-                // For now, let's just find the first occurrence from index 0?
-                // NO, if we search from 0 every time, we might map multiple claims to the same occurrence.
-                // Ideally, we search for best match.
-
-                // Complexity: If text has "Apple... Apple...", and we have 2 claims.
-                // One might map to first, one to second.
-                // Current simple logic: Map to first occurrence found. 
-                // If overlap happens, the `lastIndex` check during render will skip the second one.
-                // This is acceptable for v1.3.
-
-                const txt = c.claim_text
-                const strictIdx = sourceText.indexOf(txt)
-
-                if (strictIdx !== -1) {
-                    return { claim: c, start: strictIdx, end: strictIdx + txt.length }
+                // v1.4 FIX: Use Exact Backend Offsets
+                if (typeof c.start_char === 'number' && typeof c.end_char === 'number') {
+                    // Defensive Bounds Check
+                    if (c.start_char < 0 || c.end_char > sourceText.length) {
+                        console.error(`Claim ${c.claim_id} offsets [${c.start_char}, ${c.end_char}] out of bounds for text length ${sourceText.length}`)
+                        return null
+                    }
+                    if (c.start_char >= c.end_char) {
+                        return null
+                    }
+                    return { claim: c, start: c.start_char, end: c.end_char }
                 }
-
-                const fuzzy = findApproximateSpan(sourceText, txt, 0)
-                if (fuzzy) {
-                    return { claim: c, start: fuzzy.start, end: fuzzy.end }
-                }
-
                 return null
             })
             .filter((item): item is { claim: any, start: number, end: number } => item !== null)

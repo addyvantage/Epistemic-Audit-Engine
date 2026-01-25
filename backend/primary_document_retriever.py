@@ -73,6 +73,8 @@ class PrimaryDocumentRetriever:
              if "revenue" in txt or "advertising" in txt:
                  return [{
                       "source": "PRIMARY_DOCUMENT",
+                      "modality": "STRUCTURED", # Tag as STRUCTURED
+                      "tier": "HIGH", # High confidence, structured data
                       "authority": "SEC",
                       "document_type": "10-K",
                       "filing_year": 2023,

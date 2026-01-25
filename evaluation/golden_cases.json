@@ -1,0 +1,326 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "description": "Golden test cases for epistemic audit correctness evaluation",
+    "verdict_types": ["SUPPORTED", "REFUTED", "INSUFFICIENT_EVIDENCE", "UNCERTAIN"],
+    "hallucination_types": [
+      "ENTITY_ROLE_CONFLICT",
+      "TEMPORAL_FABRICATION",
+      "COURT_AUTHORITY_MISATTRIBUTION",
+      "IMPOSSIBLE_DOSAGE",
+      "SCOPE_OVERGENERALIZATION",
+      "UNSUPPORTED_SPECIFICITY",
+      "AUTHORITY_BLEED"
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "SUPPORT_01",
+      "category": "verdict_supported",
+      "input_text": "Apple was founded in 1976.",
+      "expected": {
+        "verdict": "SUPPORTED",
+        "hallucination_types": [],
+        "min_confidence": 0.85,
+        "risk_level": "LOW"
+      },
+      "rationale": "Factual temporal claim verified by Wikidata P571 (inception date)."
+    },
+    {
+      "case_id": "SUPPORT_02",
+      "category": "verdict_supported",
+      "input_text": "Elon Musk founded SpaceX.",
+      "expected": {
+        "verdict": "SUPPORTED",
+        "hallucination_types": [],
+        "min_confidence": 0.85,
+        "risk_level": "LOW"
+      },
+      "rationale": "Relation claim verified by Wikidata P112 (founded by)."
+    },
+    {
+      "case_id": "SUPPORT_03",
+      "category": "verdict_supported",
+      "input_text": "Paris is the capital of France.",
+      "expected": {
+        "verdict": "SUPPORTED",
+        "hallucination_types": [],
+        "min_confidence": 0.85,
+        "risk_level": "LOW"
+      },
+      "rationale": "Factual attribute verified by Wikidata P36 (capital)."
+    },
+    {
+      "case_id": "REFUTE_01",
+      "category": "verdict_refuted",
+      "input_text": "Apple was founded in 1980.",
+      "expected": {
+        "verdict": "REFUTED",
+        "hallucination_types": ["TEMPORAL_FABRICATION"],
+        "risk_level": "HIGH"
+      },
+      "rationale": "Temporal contradiction: Wikidata shows 1976, not 1980."
+    },
+    {
+      "case_id": "REFUTE_02",
+      "category": "verdict_refuted",
+      "input_text": "Steve Jobs invented the internet.",
+      "expected": {
+        "verdict": "REFUTED",
+        "hallucination_types": [],
+        "risk_level": "HIGH"
+      },
+      "rationale": "Entity-role conflict: Internet invention attributed to others (Vint Cerf, Tim Berners-Lee)."
+    },
+    {
+      "case_id": "REFUTE_03",
+      "category": "verdict_refuted",
+      "input_text": "Berlin is the capital of France.",
+      "expected": {
+        "verdict": "REFUTED",
+        "hallucination_types": [],
+        "risk_level": "HIGH"
+      },
+      "rationale": "Object mismatch: Wikidata P36 for France shows Paris, not Berlin."
+    },
+    {
+      "case_id": "INSUFF_01",
+      "category": "verdict_insufficient",
+      "input_text": "The meeting discussed operational challenges.",
+      "expected": {
+        "verdict": "INSUFFICIENT_EVIDENCE",
+        "hallucination_types": [],
+        "risk_level": "MEDIUM"
+      },
+      "rationale": "Generic claim with no linkable entities or verifiable facts."
+    },
+    {
+      "case_id": "INSUFF_02",
+      "category": "verdict_insufficient",
+      "input_text": "John Smith attended the conference.",
+      "expected": {
+        "verdict": "INSUFFICIENT_EVIDENCE",
+        "hallucination_types": [],
+        "risk_level": "MEDIUM"
+      },
+      "rationale": "Ambiguous entity (John Smith) cannot be resolved to unique Wikidata ID."
+    },
+    {
+      "case_id": "UNCERTAIN_01",
+      "category": "verdict_uncertain",
+      "input_text": "Elon Musk designed the Falcon 9 rocket engine.",
+      "expected": {
+        "verdict": "UNCERTAIN",
+        "hallucination_types": ["AUTHORITY_BLEED"],
+        "downgrade_reason": {
+          "phase": "hallucination_detection",
+          "issue": "AUTHORITY_BLEED detected: technical authorship attributed to executive"
+        },
+        "risk_level": "MEDIUM"
+      },
+      "rationale": "AUTHORITY_BLEED: Leader attributed with engineering work typically done by teams."
+    },
+    {
+      "case_id": "UNCERTAIN_02",
+      "category": "verdict_uncertain",
+      "input_text": "SpaceX launched exactly 47 missions in 2022.",
+      "expected": {
+        "verdict": "UNCERTAIN",
+        "hallucination_types": ["UNSUPPORTED_SPECIFICITY"],
+        "downgrade_reason": {
+          "phase": "hallucination_detection",
+          "issue": "UNSUPPORTED_SPECIFICITY: numeric precision not in evidence"
+        },
+        "risk_level": "MEDIUM"
+      },
+      "rationale": "Numeric specificity without supporting evidence triggers UNSUPPORTED_SPECIFICITY."
+    },
+    {
+      "case_id": "HALLUC_ENTITY_ROLE_01",
+      "category": "hallucination_entity_role",
+      "input_text": "Steve Jobs created the Linux kernel.",
+      "expected": {
+        "verdict": "REFUTED",
+        "hallucination_types": ["ENTITY_ROLE_CONFLICT"],
+        "risk_level": "HIGH"
+      },
+      "rationale": "ENTITY_ROLE_CONFLICT: Linux creator is Linus Torvalds per Wikidata P170."
+    },
+    {
+      "case_id": "HALLUC_TEMPORAL_01",
+      "category": "hallucination_temporal",
+      "input_text": "Microsoft was founded in 1990.",
+      "expected": {
+        "verdict": "REFUTED",
+        "hallucination_types": ["TEMPORAL_FABRICATION"],
+        "risk_level": "HIGH"
+      },
+      "rationale": "TEMPORAL_FABRICATION: Wikidata shows Microsoft founded 1975."
+    },
+    {
+      "case_id": "HALLUC_DOSAGE_01",
+      "category": "hallucination_dosage",
+      "input_text": "The patient received 2000mg of ibuprofen in a single dose.",
+      "expected": {
+        "verdict": "REFUTED",
+        "hallucination_types": ["IMPOSSIBLE_DOSAGE"],
+        "risk_level": "HIGH"
+      },
+      "rationale": "IMPOSSIBLE_DOSAGE: Max single ibuprofen dose is 800mg."
+    },
+    {
+      "case_id": "HALLUC_SCOPE_01",
+      "category": "hallucination_scope",
+      "input_text": "The government mandated vaccines for everyone nationwide.",
+      "expected": {
+        "verdict": "REFUTED",
+        "hallucination_types": ["SCOPE_OVERGENERALIZATION"],
+        "risk_level": "HIGH"
+      },
+      "rationale": "SCOPE_OVERGENERALIZATION: Universal mandate claim without qualifiers."
+    },
+    {
+      "case_id": "HALLUC_COURT_01",
+      "category": "hallucination_court",
+      "input_text": "The Supreme Court ruled on the local zoning dispute.",
+      "expected": {
+        "verdict": "REFUTED",
+        "hallucination_types": ["COURT_AUTHORITY_MISATTRIBUTION"],
+        "risk_level": "HIGH"
+      },
+      "rationale": "COURT_AUTHORITY_MISATTRIBUTION: Local zoning is not Supreme Court jurisdiction."
+    },
+    {
+      "case_id": "DOWNGRADE_01",
+      "category": "downgrade_chain",
+      "input_text": "Tim Cook personally engineered the M1 chip architecture.",
+      "expected": {
+        "verdict": "UNCERTAIN",
+        "hallucination_types": ["AUTHORITY_BLEED"],
+        "downgrade_reason": {
+          "phase": "hallucination_detection",
+          "issue": "Non-critical hallucination blocks SUPPORTED verdict",
+          "original_evidence": "May have entity linking success but AUTHORITY_BLEED downgrades"
+        },
+        "risk_level": "MEDIUM"
+      },
+      "rationale": "Tests downgrade chain: Entity resolves -> Evidence exists -> AUTHORITY_BLEED detected -> UNCERTAIN."
+    },
+    {
+      "case_id": "DOWNGRADE_02",
+      "category": "downgrade_chain",
+      "input_text": "Satya Nadella coded the Windows 11 kernel.",
+      "expected": {
+        "verdict": "UNCERTAIN",
+        "hallucination_types": ["AUTHORITY_BLEED"],
+        "downgrade_reason": {
+          "phase": "hallucination_detection",
+          "issue": "Executive-to-technical attribution"
+        },
+        "risk_level": "MEDIUM"
+      },
+      "rationale": "CEO attributed with low-level technical work."
+    },
+    {
+      "case_id": "EDGE_UNRESOLVED_01",
+      "category": "edge_case",
+      "input_text": "Xyzzy Plugh founded Zork Industries in 2015.",
+      "expected": {
+        "verdict": "INSUFFICIENT_EVIDENCE",
+        "hallucination_types": [],
+        "downgrade_reason": {
+          "phase": "entity_linking",
+          "issue": "Entity resolution failed: no Wikidata match"
+        },
+        "risk_level": "MEDIUM"
+      },
+      "rationale": "Fabricated entities cannot be linked, triggering INSUFFICIENT_EVIDENCE."
+    },
+    {
+      "case_id": "EDGE_HEDGED_01",
+      "category": "edge_case",
+      "input_text": "Apple was reportedly founded around 1976.",
+      "expected": {
+        "verdict": "SUPPORTED",
+        "hallucination_types": [],
+        "epistemic_status": "HEDGED",
+        "risk_level": "LOW"
+      },
+      "rationale": "Hedged claim still verifiable; hedging reduces confidence but not verdict."
+    },
+    {
+      "case_id": "EDGE_MULTI_CLAIM_01",
+      "category": "edge_case",
+      "input_text": "Apple was founded in 1976 by Steve Jobs and Steve Wozniak. Microsoft was founded in 1975 by Bill Gates.",
+      "expected": {
+        "claims_count": 3,
+        "verdicts": {
+          "SUPPORTED": 3,
+          "REFUTED": 0,
+          "UNCERTAIN": 0,
+          "INSUFFICIENT_EVIDENCE": 0
+        },
+        "risk_level": "LOW"
+      },
+      "rationale": "Multi-claim extraction: all claims verifiable."
+    },
+    {
+      "case_id": "EDGE_MIXED_01",
+      "category": "edge_case",
+      "input_text": "Apple was founded in 1976. Steve Jobs invented the internet.",
+      "expected": {
+        "claims_count": 2,
+        "verdicts": {
+          "SUPPORTED": 1,
+          "REFUTED": 1,
+          "UNCERTAIN": 0,
+          "INSUFFICIENT_EVIDENCE": 0
+        },
+        "risk_level": "MEDIUM"
+      },
+      "rationale": "Mixed verdicts: one true, one false attribution."
+    },
+    {
+      "case_id": "RISK_HIGH_01",
+      "category": "risk_calculation",
+      "input_text": "Google was founded in 2010. Amazon was founded in 2005. Microsoft was founded in 1990.",
+      "expected": {
+        "verdicts": {
+          "SUPPORTED": 0,
+          "REFUTED": 3
+        },
+        "risk_level": "HIGH",
+        "min_hallucination_score": 0.6
+      },
+      "rationale": "All claims have incorrect dates, triggering HIGH risk."
+    },
+    {
+      "case_id": "RISK_LOW_01",
+      "category": "risk_calculation",
+      "input_text": "Google was founded in 1998. Amazon was founded in 1994. Microsoft was founded in 1975.",
+      "expected": {
+        "verdicts": {
+          "SUPPORTED": 3,
+          "REFUTED": 0
+        },
+        "risk_level": "LOW",
+        "max_hallucination_score": 0.1
+      },
+      "rationale": "All claims correct, LOW risk."
+    },
+    {
+      "case_id": "SANITY_RULE_01",
+      "category": "sanity_rules",
+      "input_text": "The quarterly report mentioned increased revenue. Sales figures improved. Market conditions remained stable. Customer satisfaction was high.",
+      "expected": {
+        "claims_count_min": 4,
+        "verdict_contains": "UNCERTAIN",
+        "downgrade_reason": {
+          "phase": "verification",
+          "issue": "Sanity rule: >3 claims with zero SUPPORTED triggers INSUFFICIENT->UNCERTAIN downgrade"
+        }
+      },
+      "rationale": "Generic business claims with no verifiable entities trigger sanity rule."
+    }
+  ]
+}

@@ -225,7 +225,7 @@ export function ClaimInspector({ claim, onClose, mode = "DEMO" }: Props) {
                                             <span className="bg-yellow-100 px-1 rounded box-decoration-clone leading-[1.6]">
                                                 “{s.snippet
                                                     ? s.snippet
-                                                    : "No extractable passage was returned by this source. Evidence linkage is structural rather than textual."}”
+                                                    : "Supported by structured records; no narrative passage available."}”
                                             </span>
                                         </div>
 

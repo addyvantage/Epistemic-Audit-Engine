@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from pipeline.run_full_audit import AuditPipeline
+from backend.pipeline.run_full_audit import AuditPipeline
 
 app = FastAPI(title="Epistemic Audit Engine API")
 
