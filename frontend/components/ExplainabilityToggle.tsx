@@ -8,12 +8,18 @@ interface ExplainabilityToggleProps {
 
 export function ExplainabilityToggle({ mode, onChange }: ExplainabilityToggleProps) {
     return (
-        <div className="flex items-center bg-slate-100 rounded-lg p-1 w-fit shadow-inner border border-slate-200">
+        <div className="
+            flex items-center 
+            bg-white/70 dark:bg-neutral-900/60 
+            rounded-lg p-1 w-fit 
+            border border-slate-200 dark:border-white/10
+            backdrop-blur-sm
+        ">
             <button
                 onClick={() => onChange('CASUAL')}
                 className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all duration-200 ${mode === 'CASUAL'
-                        ? 'bg-white text-slate-900 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
+                    ? 'bg-white dark:bg-white/10 text-slate-900 dark:text-neutral-100 shadow-sm'
+                    : 'text-slate-500 dark:text-neutral-400 hover:text-slate-700 dark:hover:text-neutral-300'
                     }`}
             >
                 Casual
@@ -21,8 +27,8 @@ export function ExplainabilityToggle({ mode, onChange }: ExplainabilityTogglePro
             <button
                 onClick={() => onChange('EXPERT')}
                 className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all duration-200 ${mode === 'EXPERT'
-                        ? 'bg-slate-800 text-white shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
+                    ? 'bg-slate-800 dark:bg-white/10 text-white dark:text-neutral-100 shadow-sm'
+                    : 'text-slate-500 dark:text-neutral-400 hover:text-slate-700 dark:hover:text-neutral-300'
                     }`}
             >
                 Expert

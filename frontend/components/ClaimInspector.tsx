@@ -10,33 +10,33 @@ type Props = {
 
 const verdictStyles: Record<string, any> = {
     SUPPORTED: {
-        bg: "bg-green-50",
-        border: "border-green-200",
-        text: "text-green-800",
+        bg: "bg-green-50 dark:bg-green-900/20",
+        border: "border-green-200 dark:border-green-500/30",
+        text: "text-green-800 dark:text-green-300",
         icon: ShieldCheck,
         label: "Supported",
         description: "Supported by authoritative sources."
     },
     REFUTED: {
-        bg: "bg-red-50",
-        border: "border-red-200",
-        text: "text-red-800",
+        bg: "bg-red-50 dark:bg-red-900/20",
+        border: "border-red-200 dark:border-red-500/30",
+        text: "text-red-800 dark:text-red-300",
         icon: XCircle,
         label: "Refuted",
         description: "Contradicted by authoritative sources."
     },
     INSUFFICIENT_EVIDENCE: {
-        bg: "bg-amber-50",
-        border: "border-amber-200",
-        text: "text-amber-800",
+        bg: "bg-amber-50 dark:bg-amber-900/20",
+        border: "border-amber-200 dark:border-amber-500/30",
+        text: "text-amber-800 dark:text-amber-300",
         icon: AlertTriangle,
         label: "Insufficient Evidence",
         description: "No conclusive evidence found in knowledge graph."
     },
     SUPPORTED_WEAK: {
-        bg: "bg-green-50",
-        border: "border-green-100",
-        text: "text-green-700",
+        bg: "bg-green-50 dark:bg-green-900/20",
+        border: "border-green-100 dark:border-green-500/30",
+        text: "text-green-700 dark:text-green-400",
         icon: ShieldCheck,
         label: "Weakly Supported",
         description: "Partially supported by available sources."
@@ -87,14 +87,14 @@ export function ClaimInspector({ claim, onClose, mode = "DEMO" }: Props) {
     }[verdict as string] || "Evidence analysis inconclusive."
 
     return (
-        <aside className="fixed right-0 top-0 h-full w-[420px] bg-white border-l border-slate-200 shadow-2xl z-50 overflow-y-auto animate-in slide-in-from-right duration-300 font-sans flex flex-col">
+        <aside className="fixed right-0 top-0 h-full w-[420px] bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl border-l border-slate-200 dark:border-white/10 shadow-2xl z-50 overflow-y-auto animate-in slide-in-from-right duration-300 font-sans flex flex-col">
 
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-white/95 backdrop-blur-sm sticky top-0 z-20">
-                <h2 className="text-[10px] font-mono uppercase tracking-widest text-slate-400 font-semibold">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 dark:border-white/10 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-sm sticky top-0 z-20">
+                <h2 className="text-[10px] font-mono uppercase tracking-widest text-slate-400 dark:text-neutral-500 font-semibold">
                     Epistemic Verification
                 </h2>
-                <button onClick={onClose} className="text-slate-400 hover:text-slate-900 transition-colors p-1 hover:bg-slate-100 rounded-full">
+                <button onClick={onClose} className="text-slate-400 dark:text-neutral-500 hover:text-slate-900 dark:hover:text-neutral-200 transition-colors p-1 hover:bg-slate-100 dark:hover:bg-white/10 rounded-full">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -125,14 +125,14 @@ export function ClaimInspector({ claim, onClose, mode = "DEMO" }: Props) {
                         <Icon className={`w-5 h-5 shrink-0 ${style.text} mt-0.5`} />
                         <div>
                             <div className={`font-bold text-sm ${style.text} mb-1`}>{style.label}</div>
-                            <div className="text-xs text-slate-600 leading-relaxed font-mono opacity-80">
+                            <div className="text-xs text-slate-600 dark:text-neutral-400 leading-relaxed font-mono opacity-80">
                                 Confidence: {(confidence * 100).toFixed(0)}%
                             </div>
                         </div>
                     </div>
 
                     {/* 2. Quoted Claim */}
-                    <blockquote className="text-lg font-medium text-slate-800 leading-relaxed border-l-4 border-slate-200 pl-4 mb-2 italic">
+                    <blockquote className="text-lg font-medium text-slate-800 dark:text-neutral-200 leading-relaxed border-l-4 border-slate-200 dark:border-white/10 pl-4 mb-2 italic">
                         “{claim.claim_text}”
                     </blockquote>
                 </div>
@@ -141,8 +141,8 @@ export function ClaimInspector({ claim, onClose, mode = "DEMO" }: Props) {
 
                 {/* 3. Analysis */}
                 <div className="px-6">
-                    <h3 className="text-xs font-bold text-slate-900 mb-2 uppercase tracking-wide">Analysis</h3>
-                    <p className="text-sm text-slate-600 leading-relaxed">
+                    <h3 className="text-xs font-bold text-slate-900 dark:text-neutral-100 mb-2 uppercase tracking-wide">Analysis</h3>
+                    <p className="text-sm text-slate-600 dark:text-neutral-400 leading-relaxed">
                         {reasoning}
                     </p>
                 </div>
@@ -151,13 +151,13 @@ export function ClaimInspector({ claim, onClose, mode = "DEMO" }: Props) {
 
                 {/* 4. Evidence Sources */}
                 <div className="px-6">
-                    <h3 className="text-xs font-bold text-slate-900 mb-4 flex items-center justify-between uppercase tracking-wide">
+                    <h3 className="text-xs font-bold text-slate-900 dark:text-neutral-100 mb-4 flex items-center justify-between uppercase tracking-wide">
                         <span>Evidence Sources</span>
-                        {hasEvidence && <span className="text-[10px] font-normal text-slate-400">{primaryDocs.length + structuredSources.length + narrativeSources.length} Records</span>}
+                        {hasEvidence && <span className="text-[10px] font-normal text-slate-400 dark:text-neutral-500">{primaryDocs.length + structuredSources.length + narrativeSources.length} Records</span>}
                     </h3>
 
                     {!hasEvidence && (
-                        <div className="text-sm text-slate-400 italic bg-slate-50 p-4 rounded-lg text-center border border-slate-100 cursor-default">
+                        <div className="text-sm text-slate-400 dark:text-neutral-500 italic bg-slate-50 dark:bg-neutral-900/40 p-4 rounded-lg text-center border border-slate-100 dark:border-white/10 cursor-default">
                             No authoritative records linked.
                         </div>
                     )}
@@ -197,13 +197,13 @@ export function ClaimInspector({ claim, onClose, mode = "DEMO" }: Props) {
                             <div className="space-y-3">
                                 <div className="text-[10px] font-mono text-slate-400 uppercase font-semibold">Structured Knowledge Graph</div>
                                 {structuredSources.map((s: any, i: number) => (
-                                    <div key={i} className="bg-slate-50 border border-slate-100 rounded p-3">
-                                        <div className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-1">{s.label}</div>
-                                        <div className="text-sm text-slate-900 font-medium mb-1 line-clamp-2">
-                                            <span className="bg-yellow-100 px-1 rounded box-decoration-clone leading-relaxed">{s.value}</span>
+                                    <div key={i} className="bg-slate-50 dark:bg-neutral-900/40 border border-slate-100 dark:border-white/10 rounded p-3">
+                                        <div className="text-xs font-semibold text-slate-700 dark:text-neutral-400 uppercase tracking-wide mb-1">{s.label}</div>
+                                        <div className="text-sm text-slate-900 dark:text-neutral-200 font-medium mb-1 line-clamp-2">
+                                            <span className="bg-yellow-100 dark:bg-yellow-900/30 px-1 rounded box-decoration-clone leading-relaxed text-slate-900 dark:text-yellow-100">{s.value}</span>
                                         </div>
                                         {s.url && (
-                                            <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-slate-400 hover:text-slate-600 flex items-center gap-1 mt-1">
+                                            <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-slate-400 dark:text-neutral-500 hover:text-slate-600 dark:hover:text-neutral-300 flex items-center gap-1 mt-1">
                                                 KB Record <ExternalLink className="w-2.5 h-2.5" />
                                             </a>
                                         )}
@@ -217,12 +217,12 @@ export function ClaimInspector({ claim, onClose, mode = "DEMO" }: Props) {
                             <div className="space-y-3">
                                 <div className="text-[10px] font-mono text-slate-400 uppercase font-semibold">Narrative Corpal Evidence</div>
                                 {narrativeSources.map((s: any, i: number) => (
-                                    <div key={i + 10} className="bg-white border border-slate-200 rounded p-3 shadow-sm">
-                                        <div className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">{s.title}</div>
+                                    <div key={i + 10} className="bg-white dark:bg-neutral-900/60 border border-slate-200 dark:border-white/10 rounded p-3 shadow-sm">
+                                        <div className="text-xs font-semibold text-slate-700 dark:text-neutral-400 uppercase tracking-wide mb-2">{s.title}</div>
 
                                         {/* Highlighted Snippet - Marker Style */}
-                                        <div className="text-sm text-slate-800 leading-relaxed mb-2">
-                                            <span className="bg-yellow-100 px-1 rounded box-decoration-clone leading-[1.6]">
+                                        <div className="text-sm text-slate-800 dark:text-neutral-300 leading-relaxed mb-2">
+                                            <span className="bg-yellow-100 dark:bg-yellow-900/20 px-1 rounded box-decoration-clone leading-[1.6] text-slate-900 dark:text-neutral-200">
                                                 “{s.snippet
                                                     ? s.snippet
                                                     : "Supported by structured records; no narrative passage available."}”
@@ -230,7 +230,7 @@ export function ClaimInspector({ claim, onClose, mode = "DEMO" }: Props) {
                                         </div>
 
                                         {s.url && (
-                                            <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-600 hover:underline flex items-center gap-1">
+                                            <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1">
                                                 View Source <ExternalLink className="w-2.5 h-2.5" />
                                             </a>
                                         )}

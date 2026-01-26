@@ -32,7 +32,7 @@ export function EpistemicHoverCard({ claim, position, visible, explainabilityMod
     const hasSources = sources.length > 0
 
     // --- STYLING LOGIC (v1.6.2 Final Consistency) ---
-    let bgClass = "bg-amber-50/83 border-amber-300 shadow-xl"
+    let bgClass = "bg-amber-50/83 dark:bg-neutral-900/95 border-amber-300 dark:border-white/10 shadow-xl"
     let statusColor = "bg-amber-500"
     let headerLabel = isExpert ? "UNCERTAIN / INSUFFICIENT" : "Needs more evidence"
     let accentColor = "bg-amber-500/80"
@@ -41,7 +41,7 @@ export function EpistemicHoverCard({ claim, position, visible, explainabilityMod
     let citationTint = "border-amber-400 group-hover:border-amber-500 hover:shadow-[0_0_8px_rgba(245,158,11,0.2)]"
 
     if (isRefuted) {
-        bgClass = "bg-red-50/80 border-red-300 shadow-[0_8px_32px_-4px_rgba(220,38,38,0.12)]"
+        bgClass = "bg-red-50/80 dark:bg-neutral-900/95 border-red-300 dark:border-white/10 shadow-[0_8px_32px_-4px_rgba(220,38,38,0.12)]"
         statusColor = "bg-red-500"
         headerLabel = isExpert ? "REFUTED" : "Evidence contradicts this"
         accentColor = "bg-red-500/80"
@@ -49,7 +49,7 @@ export function EpistemicHoverCard({ claim, position, visible, explainabilityMod
         riskLabel = "High Impact"
         citationTint = "border-red-400 group-hover:border-red-500 hover:shadow-[0_0_8px_rgba(220,38,38,0.2)]"
     } else if (isSupported) {
-        bgClass = "bg-emerald-50/80 border-emerald-300 shadow-[0_8px_32px_-4px_rgba(5,150,105,0.12)]"
+        bgClass = "bg-emerald-50/80 dark:bg-neutral-900/95 border-emerald-300 dark:border-white/10 shadow-[0_8px_32px_-4px_rgba(5,150,105,0.12)]"
         statusColor = "bg-emerald-500"
         headerLabel = isExpert ? "SUPPORTED" : "Verified"
         accentColor = "bg-emerald-500/80"
@@ -78,7 +78,7 @@ export function EpistemicHoverCard({ claim, position, visible, explainabilityMod
             }}
         >
             {/* Header */}
-            <div className={`px-5 py-4 flex items-center justify-between rounded-t-2xl border-b border-black/5 ${staggerBase} ${delay1}`}>
+            <div className={`px-5 py-4 flex items-center justify-between rounded-t-2xl border-b border-slate-200/60 dark:border-white/10 ${staggerBase} ${delay1}`}>
                 <div className="flex items-center gap-3">
                     <div className={`w-2.5 h-2.5 rounded-full ${statusColor} shadow-[0_0_8px_rgba(0,0,0,0.1)]`} />
                     <div className="flex flex-col">
@@ -107,8 +107,8 @@ export function EpistemicHoverCard({ claim, position, visible, explainabilityMod
 
                 {/* 1. Reasoning */}
                 <div className={`${staggerBase} ${delay2}`}>
-                    <h4 className="text-[10px] uppercase opacity-40 font-bold tracking-[0.15em] mb-2">{isExpert ? "EPISTEMIC RATIONALE" : "Why this was flagged"}</h4>
-                    <p className="text-sm text-slate-900 leading-relaxed font-serif italic opacity-90">
+                    <h4 className="text-[10px] uppercase opacity-40 font-bold tracking-[0.15em] mb-2 text-slate-900 dark:text-neutral-400">{isExpert ? "EPISTEMIC RATIONALE" : "Why this was flagged"}</h4>
+                    <p className="text-sm text-slate-900 dark:text-neutral-200 leading-relaxed font-serif italic opacity-90">
                         {reasoning}
                     </p>
                 </div>
@@ -119,7 +119,7 @@ export function EpistemicHoverCard({ claim, position, visible, explainabilityMod
                         <h4 className="text-[10px] uppercase opacity-40 font-bold tracking-[0.15em]">{isExpert ? "RISK CONTRIBUTION" : "Impact on overall risk"}</h4>
                         <span className="text-[10px] font-bold text-slate-500 tracking-tight">{riskLabel}</span>
                     </div>
-                    <div className="h-1.5 w-full bg-black/5 rounded-full overflow-hidden border border-black/5">
+                    <div className="h-1.5 w-full bg-slate-200/50 dark:bg-white/10 rounded-full overflow-hidden border border-black/5 dark:border-transparent">
                         <div
                             className={`h-full rounded-full ${accentColor} opacity-90 transition-all duration-1000 ease-out`}
                             style={{ width: visible ? riskFillWidth : '0%' }}
@@ -129,7 +129,7 @@ export function EpistemicHoverCard({ claim, position, visible, explainabilityMod
 
                 {/* 3. Evidence Snapshot (Semantic Fix v1.6.0) */}
                 <div className={`${staggerBase} ${delay4}`}>
-                    <h4 className="text-[10px] uppercase opacity-40 font-bold tracking-[0.15em] mb-2">Evidence Snapshot</h4>
+                    <h4 className="text-[10px] uppercase font-bold tracking-[0.15em] mb-2 text-slate-500 dark:text-amber-300 opacity-100">Evidence Snapshot</h4>
 
                     {hasSources ? (
                         <div className="flex flex-wrap gap-2">
@@ -141,9 +141,12 @@ export function EpistemicHoverCard({ claim, position, visible, explainabilityMod
                             )}
                         </div>
                     ) : (
-                        <div className={`p-4 border rounded-xl flex flex-col items-center justify-center gap-2 ${isSupported ? "bg-emerald-500/5 border-emerald-200" : "bg-amber-500/5 border-dashed border-amber-300"
+                        <div className={`p-6 rounded-xl border border-dashed backdrop-blur-xl shadow-sm transition-colors duration-300
+                            ${isSupported
+                                ? "bg-emerald-50/70 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-500/30"
+                                : "bg-slate-100/70 dark:bg-neutral-900/60 border-slate-300 dark:border-amber-400/40 dark:shadow-[0_10px_40px_rgba(0,0,0,0.6)]"
                             }`}>
-                            <p className="text-[11px] font-medium opacity-60 text-center leading-tight">
+                            <p className="text-sm font-medium leading-relaxed text-center text-slate-700 dark:text-neutral-200">
                                 {isSupported
                                     ? (isExpert ? "Verified via structured knowledge graph (canonical predicate match)." : "Verified using authoritative structured records.")
                                     : "No authoritative source could be confidently linked."}

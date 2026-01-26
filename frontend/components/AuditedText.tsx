@@ -232,7 +232,7 @@ export function AuditedText({ sourceText, claims, mode = "DEMO", selectedClaimId
 
     return (
         <div className="relative">
-            <div className="prose prose-slate dark:prose-invert max-w-3xl mx-auto leading-loose text-slate-800 dark:text-neutral-200 bg-white dark:bg-white/[0.02] p-8 rounded-xl shadow-sm border border-slate-100 dark:border-white/5 font-serif transition-colors duration-500">
+            <div className="prose prose-slate max-w-3xl mx-auto leading-loose text-slate-700 dark:text-neutral-300 bg-transparent p-8 font-serif transition-colors duration-500">
                 {claims.length > 0 ? renderText() : sourceText}
             </div>
 

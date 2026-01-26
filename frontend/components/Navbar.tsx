@@ -1,13 +1,20 @@
 "use client"
 import Link from 'next/link'
+import { useState, useEffect } from 'react'
 import { ShieldCheck, Github, Moon, Sun } from 'lucide-react'
 import { useTheme } from "@/app/providers/ThemeProvider"
 
 export function Navbar() {
-    const { theme, toggleTheme } = useTheme()
+    const { theme, setTheme } = useTheme()
+    const [mounted, setMounted] = useState(false)
+
+    // Avoid hydration mismatch
+    useEffect(() => setMounted(true), [])
+
+    if (!mounted) return null
 
     return (
-        <nav className="sticky top-0 z-40 w-full border-b border-slate-200 dark:border-border-subtle bg-white/80 dark:bg-black/90 backdrop-blur-md transition-colors duration-500">
+        <nav className="sticky top-0 z-40 w-full border-b border-slate-200 dark:border-white/5 bg-white/80 dark:bg-[#0A0A0B]/80 backdrop-blur-xl transition-all duration-500 supports-[backdrop-filter]:bg-white/60 dark:supports-[backdrop-filter]:bg-[#0A0A0B]/60">
             <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
                 <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight text-slate-900 dark:text-slate-100">
                     <ShieldCheck className="w-5 h-5 text-slate-900 dark:text-slate-100" />
@@ -20,14 +27,14 @@ export function Navbar() {
 
                     {/* Theme Toggle */}
                     <button
-                        onClick={toggleTheme}
+                        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                         aria-label="Toggle theme"
-                        className="p-2 rounded-full bg-slate-100 dark:bg-graphite text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-charcoal transition-colors"
+                        className="p-2 rounded-full bg-slate-100 dark:bg-neutral-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-neutral-700 transition-colors"
                     >
                         {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                     </button>
 
-                    <div className="h-4 w-px bg-slate-200 dark:bg-border-subtle" />
+                    <div className="h-4 w-px bg-slate-200 dark:bg-white/10" />
                     <a href="https://github.com/addyvantage/epistemic-audit-engine" target="_blank" rel="noopener noreferrer" className="hover:text-slate-900 dark:hover:text-slate-200 transition-colors">
                         <Github className="w-5 h-5" />
                     </a>

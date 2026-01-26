@@ -26,53 +26,6 @@ section {
     background-color: transparent !important;
 }
 
-/* Epistemic Highlight System (v1.3 Physical Markers) */
-.epistemic-highlight {
-    padding: 0.05em 0.2em;
-    border-radius: 3px 2px 4px 1px;
-    /* Subtle irregularity */
-    cursor: pointer;
-    transition: all 0.2s ease-out;
-    box-decoration-break: clone;
-    -webkit-box-decoration-break: clone;
-    position: relative;
-}
-
-.highlight-green {
-    background: linear-gradient(110deg, rgba(34, 197, 94, 0) 2%, rgba(34, 197, 94, 0.15) 15%, rgba(34, 197, 94, 0.25) 50%, rgba(34, 197, 94, 0.1) 95%);
-}
-
-.highlight-green:hover {
-    background: linear-gradient(110deg, rgba(34, 197, 94, 0) 2%, rgba(34, 197, 94, 0.25) 15%, rgba(34, 197, 94, 0.35) 50%, rgba(34, 197, 94, 0.2) 95%);
-    box-shadow: 0 1px 2px rgba(34, 197, 94, 0.1);
-}
-
-.highlight-red {
-    background: linear-gradient(110deg, rgba(239, 68, 68, 0) 2%, rgba(239, 68, 68, 0.15) 15%, rgba(239, 68, 68, 0.25) 50%, rgba(239, 68, 68, 0.1) 95%);
-}
-
-.highlight-red:hover {
-    background: linear-gradient(110deg, rgba(239, 68, 68, 0) 2%, rgba(239, 68, 68, 0.25) 15%, rgba(239, 68, 68, 0.35) 50%, rgba(239, 68, 68, 0.2) 95%);
-    box-shadow: 0 1px 2px rgba(239, 68, 68, 0.1);
-}
-
-.highlight-amber {
-    background: linear-gradient(110deg, rgba(245, 158, 11, 0) 2%, rgba(245, 158, 11, 0.15) 15%, rgba(245, 158, 11, 0.25) 50%, rgba(245, 158, 11, 0.1) 95%);
-}
-
-.highlight-amber:hover {
-    background: linear-gradient(110deg, rgba(245, 158, 11, 0) 2%, rgba(245, 158, 11, 0.25) 15%, rgba(245, 158, 11, 0.35) 50%, rgba(245, 158, 11, 0.2) 95%);
-    box-shadow: 0 1px 2px rgba(245, 158, 11, 0.1);
-}
-
-.highlight-slate {
-    background: linear-gradient(110deg, rgba(148, 163, 184, 0) 2%, rgba(148, 163, 184, 0.1) 15%, rgba(148, 163, 184, 0.2) 50%, rgba(148, 163, 184, 0.05) 95%);
-}
-
-.highlight-slate:hover {
-    background: linear-gradient(110deg, rgba(148, 163, 184, 0) 2%, rgba(148, 163, 184, 0.2) 15%, rgba(148, 163, 184, 0.3) 50%, rgba(148, 163, 184, 0.15) 95%);
-}
-
 /* Utility Animations */
 @keyframes shimmer {
     0% {
@@ -95,6 +48,8 @@ section {
     inset: 0;
     pointer-events: none;
     z-index: -1;
+    opacity: 0.6;
+    /* Reduced from 1.0 */
 
     background:
         radial-gradient(1200px 600px at 50% 0%,
@@ -111,7 +66,8 @@ section {
     inset: 0;
     pointer-events: none;
     z-index: -1;
-    opacity: 0.02;
+    opacity: 0.015;
+    /* Reduced from 0.02 */
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
@@ -135,6 +91,16 @@ section {
     }
 }
 
-.animate-slow-glow {
-    animation: slowGlow 6s ease-in-out infinite;
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.no-scrollbar {
+    -ms-overflow-style: none;
+    /* IE and Edge */
+    scrollbar-width: none;
+    /* Firefox */
 }

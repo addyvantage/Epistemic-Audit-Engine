@@ -16,20 +16,30 @@ interface EpistemicHighlightProps {
     isDerived?: boolean
 }
 
-export function EpistemicHighlight({ children, onClick, onMouseEnter, onMouseLeave, onFocus, onBlur, isActive, claimId, verdict, polarity, isContested, isDerived }: EpistemicHighlightProps) {
-    const getColorClass = () => {
-        if (isDerived) return "border-b-2 border-slate-300 text-slate-600 border-dashed"
-        if (isContested) return "border-b-2 border-dotted border-slate-400 italic text-slate-700"
-        if (polarity === "META_EPISTEMIC") return "highlight-slate"
-        if (verdict === "SUPPORTED" || verdict === "SUPPORTED_WEAK") return "highlight-green"
-        if (verdict === "REFUTED") return "highlight-red"
-        return "highlight-amber"
-    }
+const HIGHLIGHT_CLASS_MAP: Record<string, string> = {
+    SUPPORTED: "bg-emerald-200/50 dark:bg-emerald-500/30 text-emerald-900 dark:text-emerald-100",
+    SUPPORTED_WEAK: "bg-emerald-200/50 dark:bg-emerald-500/30 text-emerald-900 dark:text-emerald-100",
+    REFUTED: "bg-red-200/50 dark:bg-red-500/30 text-red-900 dark:text-red-100",
+    UNCERTAIN: "bg-amber-200/50 dark:bg-amber-500/30 text-amber-900 dark:text-amber-100",
+    META_EPISTEMIC: "bg-slate-100 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300",
+}
 
-    const getFocusRing = () => {
-        if (verdict === "REFUTED") return "focus:ring-red-400"
-        if (verdict === "SUPPORTED" || verdict === "SUPPORTED_WEAK") return "focus:ring-emerald-400"
-        return "focus:ring-amber-400"
+const FOCUS_RING_MAP: Record<string, string> = {
+    SUPPORTED: "focus:ring-emerald-400",
+    SUPPORTED_WEAK: "focus:ring-emerald-400",
+    REFUTED: "focus:ring-red-400",
+    UNCERTAIN: "focus:ring-amber-400",
+}
+
+export function EpistemicHighlight({ children, onClick, onMouseEnter, onMouseLeave, onFocus, onBlur, isActive, claimId, verdict, polarity, isContested, isDerived }: EpistemicHighlightProps) {
+
+    // Static JIT-safe class resolution
+    const colorClass = HIGHLIGHT_CLASS_MAP[polarity === "META_EPISTEMIC" ? "META_EPISTEMIC" : verdict] || HIGHLIGHT_CLASS_MAP.UNCERTAIN
+
+    const getOtherClasses = () => {
+        if (isDerived) return "border-b-2 border-slate-300 dark:border-white/20 text-slate-600 dark:text-slate-400 border-dashed"
+        if (isContested) return "border-b-2 border-dotted border-red-400 text-slate-700 dark:text-slate-300"
+        return ""
     }
 
     const getAriaLabel = () => {
@@ -43,7 +53,18 @@ export function EpistemicHighlight({ children, onClick, onMouseEnter, onMouseLea
             tabIndex={0}
             role="button"
             aria-label={getAriaLabel()}
-            className={`${isContested ? '' : 'epistemic-highlight'} ${getColorClass()} relative group cursor-pointer outline-none focus:ring-2 focus:ring-offset-2 rounded-sm transition-all ${getFocusRing()} ${isActive ? 'ring-2 ring-slate-400 ring-offset-1 rounded-sm' : ''}`}
+            className={`
+                relative isolate 
+                px-0.5 rounded-sm 
+                cursor-pointer 
+                transition-all duration-200 
+                outline-none 
+                ${colorClass}
+                ${getOtherClasses()}
+                ${FOCUS_RING_MAP[verdict] || "focus:ring-amber-400"} 
+                ${isActive ? 'ring-2 ring-slate-400 dark:ring-white/50 ring-offset-1 dark:ring-offset-black rounded-sm z-20' : 'z-auto'}
+                group
+            `}
             onClick={(e) => {
                 e.stopPropagation();
                 onClick();
@@ -58,13 +79,21 @@ export function EpistemicHighlight({ children, onClick, onMouseEnter, onMouseLea
                     onClick();
                 }
             }}
+            style={{ boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone' }}
         >
             {children}
             {/* Hover Glow Pulse (Micro-Animation) */}
-            <span className={`absolute bottom-0 left-0 w-full h-0.5 opacity-0 group-hover:animate-pulse-once group-hover:opacity-100 focus:opacity-100 transition-all duration-300 ${verdict === "REFUTED" ? "bg-red-400/50 shadow-[0_0_8px_rgba(248,113,113,0.6)]" :
-                (verdict === "SUPPORTED" || verdict === "SUPPORTED_WEAK") ? "bg-emerald-400/50 shadow-[0_0_8px_rgba(52,211,153,0.6)]" :
-                    "bg-amber-400/50 shadow-[0_0_8px_rgba(251,191,36,0.6)]"
-                }`} />
+            <span className={`
+                absolute bottom-0 left-0 w-full h-full 
+                opacity-0 group-hover:opacity-100 
+                transition-opacity duration-300 
+                pointer-events-none 
+                rounded-sm
+                ${verdict === "REFUTED" ? "bg-red-400/20" :
+                    (verdict === "SUPPORTED" || verdict === "SUPPORTED_WEAK") ? "bg-emerald-400/20" :
+                        "bg-amber-400/20"
+                }`}
+            />
         </span>
     )
 }

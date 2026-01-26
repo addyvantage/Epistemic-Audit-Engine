@@ -18,21 +18,7 @@ export default function RootLayout({
 }) {
     return (
         <html lang="en" suppressHydrationWarning>
-            <head>
-                <script
-                    dangerouslySetInnerHTML={{
-                        __html: `
-                            try {
-                                if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-                                    document.documentElement.classList.add('dark')
-                                } else {
-                                    document.documentElement.classList.remove('dark')
-                                }
-                            } catch (_) {}
-                        `,
-                    }}
-                />
-            </head>
+            <head />
             <body className={`font-sans bg-white dark:bg-black min-h-screen flex flex-col antialiased transition-colors duration-500 selection:bg-emerald-500/20 selection:text-emerald-200`}>
                 <ThemeProvider>
                     <Navbar />

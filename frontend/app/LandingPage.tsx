@@ -82,28 +82,32 @@ function useGuidedCursor(
 // Section 1: Hero
 const HeroSection = () => {
     return (
-        <section className="min-h-screen flex flex-col items-center justify-center text-center px-4 relative overflow-hidden bg-white dark:bg-transparent">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(15,23,42,0.04),transparent_60%)] dark:hidden" />
+        <section className="min-h-screen flex flex-col items-center justify-center text-center px-4 relative overflow-hidden bg-white dark:bg-transparent selection:bg-emerald-500/30">
+            {/* Stage Light Glow */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-emerald-500/5 blur-[120px] rounded-full pointer-events-none mix-blend-screen dark:mix-blend-plus-lighter opacity-0 dark:opacity-100 transition-opacity duration-1000" />
 
-            <div className="max-w-5xl mx-auto">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(15,23,42,0.03),transparent_60%)] dark:hidden" />
+
+            <div className="max-w-5xl mx-auto relative z-10">
+                {/* Authority Badge */}
                 <motion.div
                     {...({
-                        initial: { opacity: 0, y: 12 },
+                        initial: { opacity: 0, y: 10 },
                         animate: { opacity: 1, y: 0 },
-                        transition: { duration: 0.6, ease: "easeOut" },
-                        className: "inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/80 dark:bg-white/[0.05] text-slate-700 dark:text-neutral-400 text-[11px] font-semibold tracking-wider uppercase mb-8 border border-slate-200 dark:border-white/10 backdrop-blur-xl"
+                        transition: { duration: 0.8, ease: "easeOut" },
+                        className: "inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-emerald-500/10 text-slate-600 dark:text-emerald-400 text-[10px] font-bold tracking-widest uppercase mb-10 border border-slate-200 dark:border-emerald-500/20 backdrop-blur-md shadow-sm"
                     } as any)}
                 >
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    Research Preview • Epistemic Analysis
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Research Preview • System Online
                 </motion.div>
 
                 <motion.h1
                     {...({
-                        initial: { opacity: 0, y: 12 },
+                        initial: { opacity: 0, y: 20 },
                         animate: { opacity: 1, y: 0 },
-                        transition: { duration: 0.6, delay: 0.1, ease: "easeOut" },
-                        className: "text-4xl md:text-6xl font-medium tracking-[-0.04em] leading-[1.05] mb-8 text-slate-900 dark:text-transparent dark:bg-clip-text dark:bg-gradient-to-b dark:from-white dark:via-neutral-200 dark:to-neutral-400 dark:drop-shadow-[0_0_15px_rgba(255,255,255,0.06)]"
+                        transition: { duration: 0.8, delay: 0.15, ease: "easeOut" },
+                        className: "text-5xl md:text-7xl font-medium tracking-[-0.03em] leading-[1.05] mb-8 text-slate-900 dark:text-transparent dark:bg-clip-text dark:bg-gradient-to-b dark:from-white dark:via-neutral-100 dark:to-neutral-400 drop-shadow-sm dark:drop-shadow-[0_0_25px_rgba(255,255,255,0.1)]"
                     } as any)}
                 >
                     Audit where AI confidence <br />
@@ -112,63 +116,51 @@ const HeroSection = () => {
 
                 <motion.p
                     {...({
-                        initial: { opacity: 0, y: 12 },
+                        initial: { opacity: 0, y: 20 },
                         animate: { opacity: 1, y: 0 },
-                        transition: { duration: 0.6, delay: 0.18, ease: "easeOut" },
-                        className: "text-xl md:text-2xl text-slate-600 dark:text-slate-400 max-w-3xl mx-auto mb-12 leading-relaxed font-light"
+                        transition: { duration: 0.8, delay: 0.25, ease: "easeOut" },
+                        className: "text-xl md:text-2xl text-slate-600 dark:text-neutral-400 max-w-3xl mx-auto mb-14 leading-relaxed font-light antialiased"
                     } as any)}
                 >
                     Not fact-checking. Not binary verification. <br className="hidden md:block" />
                     A risk-aware analysis of confidence versus evidence.
                 </motion.p>
 
-                {/* v1.7 Hero Navigation: Dual Entry */}
+                {/* v2.0 Hero Navigation: Flagship CTA */}
                 <motion.div
                     {...({
-                        initial: { opacity: 0, y: 12 },
+                        initial: { opacity: 0, y: 20 },
                         animate: { opacity: 1, y: 0 },
-                        transition: { duration: 0.6, delay: 0.26, ease: "easeOut" },
-                        className: "flex flex-col md:flex-row items-center justify-center gap-4"
+                        transition: { duration: 0.8, delay: 0.35, ease: "easeOut" },
+                        className: "flex flex-col md:flex-row items-center justify-center gap-5"
                     } as any)}
                 >
                     <Link href="/audit">
                         <motion.button
-                            whileHover="hover"
-                            whileTap="tap"
-                            className="group relative inline-flex items-center gap-2.5 px-8 py-4 rounded-full bg-emerald-700 text-white font-medium text-sm shadow-[0_4px_20px_rgba(16,185,129,0.2)] hover:bg-emerald-600 transition-all duration-300 overflow-hidden"
-                            aria-label="Run an epistemic audit"
-                            {...({} as any)}
+                            {...({
+                                whileHover: { scale: 1.02 },
+                                whileTap: { scale: 0.98 },
+                                transition: { duration: 0.2, ease: "easeOut" },
+                                className: "group relative inline-flex items-center gap-3 px-8 py-4 rounded-full bg-slate-900 dark:bg-emerald-600 text-white font-medium text-sm shadow-[0_4px_10px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.1)] dark:shadow-[0_10px_30px_rgba(16,185,129,0.25),inset_0_1px_0_rgba(255,255,255,0.2)] hover:bg-slate-800 dark:hover:bg-emerald-500 transition-all duration-300",
+                                "aria-label": "Run an epistemic audit"
+                            } as any)}
                         >
-                            <div className="absolute inset-0 rounded-full opacity-0 transition-opacity duration-300 pointer-events-none shadow-[0_0_40px_rgba(16,185,129,0.6)] group-hover:opacity-100 ring-2 ring-emerald-400/50" />
-                            <span className="relative z-10">Run an Epistemic Audit</span>
-                            <motion.span
-                                {...({
-                                    variants: {
-                                        hover: { x: 3 },
-                                        tap: { x: 0 }
-                                    },
-                                    transition: { duration: 0.2, ease: "easeOut" },
-                                    className: "relative z-10"
-                                } as any)}
-                            >
-                                <ArrowRight className="w-4 h-4" />
-                            </motion.span>
+                            <span className="relative z-10 tracking-wide">Run Epistemic Audit</span>
+                            <ArrowRight className="w-4 h-4 relative z-10 transition-transform group-hover:translate-x-1" />
                         </motion.button>
                     </Link>
 
                     <Link href="/how-it-works">
                         <motion.button
-                            whileHover="hover"
-                            whileTap="tap"
-                            variants={{
-                                hover: { backgroundColor: "rgba(248, 250, 252, 0.8)" },
-                                tap: { scale: 0.98 }
-                            }}
-                            className="group relative inline-flex items-center px-8 py-4 bg-transparent border border-slate-300 dark:border-white/10 text-slate-700 dark:text-neutral-400 rounded-full font-medium tracking-wide text-sm transition-colors hover:bg-slate-50 dark:hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
-                            aria-label="View methodology"
-                            {...({} as any)}
+                            {...({
+                                whileHover: { scale: 1.02, backgroundColor: "rgba(255,255,255,0.08)" },
+                                whileTap: { scale: 0.98 },
+                                transition: { duration: 0.2, ease: "easeOut" },
+                                className: "group relative inline-flex items-center px-8 py-4 bg-transparent border border-slate-200 dark:border-white/10 text-slate-600 dark:text-neutral-400 rounded-full font-medium tracking-wide text-sm transition-colors hover:border-slate-300 dark:hover:border-white/20 dark:hover:text-neutral-200",
+                                "aria-label": "View methodology"
+                            } as any)}
                         >
-                            <span>View Methodology</span>
+                            <span>Read Methodology</span>
                         </motion.button>
                     </Link>
                 </motion.div>
