@@ -1,15 +1,24 @@
 "use client"
 import React, { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { AuditInput } from '@/components/AuditInput'
 import { AuditSummary } from '@/components/AuditSummary'
 import { AuditedText } from '@/components/AuditedText'
-import { Loader2 } from 'lucide-react'
+import { Loader2, CheckCircle2, Search, Database, FileCheck, Scale } from 'lucide-react'
 import { TimelineView } from '@/components/TimelineView'
 import { ExplainabilityToggle } from '@/components/ExplainabilityToggle'
-
+import { PREMIUM_EASE } from '@/lib/motion-variants'
 
 // System Phases
 type Phase = "INPUT" | "PROCESSING" | "RESULTS"
+
+// Processing steps for visual progress
+const PROCESSING_STEPS = [
+    { id: 'extract', label: 'Extracting', icon: Search },
+    { id: 'query', label: 'Querying', icon: Database },
+    { id: 'verify', label: 'Verifying', icon: FileCheck },
+    { id: 'calibrate', label: 'Calibrating', icon: Scale },
+]
 
 const LOADING_STATES = [
     "Extracting atomic claims from text...",
@@ -25,6 +34,7 @@ export default function AuditPage() {
     const [error, setError] = useState<string | null>(null)
     const [sourceText, setSourceText] = useState("")
     const [loadingMsg, setLoadingMsg] = useState(LOADING_STATES[0])
+    const [currentStep, setCurrentStep] = useState(0)
     const [mode, setMode] = useState<"DEMO" | "RESEARCH">("DEMO")
     const [explainabilityMode, setExplainabilityMode] = useState<'CASUAL' | 'EXPERT'>('CASUAL')
     const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null)
@@ -36,6 +46,7 @@ export default function AuditPage() {
         const interval = setInterval(() => {
             i = (i + 1) % LOADING_STATES.length
             setLoadingMsg(LOADING_STATES[i])
+            setCurrentStep(Math.min(i, PROCESSING_STEPS.length - 1))
         }, 1200)
         return () => clearInterval(interval)
     }, [phase])
@@ -67,7 +78,6 @@ export default function AuditPage() {
     return (
         <div className="min-h-screen bg-transparent font-sans text-slate-900 dark:text-slate-100 pb-20 transition-colors duration-500">
 
-            {/* Top Bar (SaaS Identity) */}
             {/* Top Bar (Toolbar - Only in Results) */}
             {phase === "RESULTS" && (
                 <div className="h-16 flex items-center justify-end px-6 border-b border-slate-200 dark:border-border-subtle bg-white/80 dark:bg-black/90 backdrop-blur-sm sticky top-0 z-30">
@@ -103,7 +113,7 @@ export default function AuditPage() {
                         <AuditInput onAudit={handleAudit} isLoading={false} />
 
                         {error && (
-                            <div className="mt-8 p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg text-center border border-red-100 dark:border-red-800 text-sm">
+                            <div className="mt-8 p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg text-center border border-red-100 dark:border-red-800 text-sm animate-in fade-in duration-300">
                                 {error}
                             </div>
                         )}
@@ -112,17 +122,48 @@ export default function AuditPage() {
 
                 {/* PHASE 2: PROCESSING */}
                 {phase === "PROCESSING" && (
-                    <div className="flex flex-col items-center justify-center pt-32 animate-in fade-in duration-700">
-                        <div className="relative w-16 h-16 mb-8 group">
-                            <div className="absolute inset-0 bg-slate-200 dark:bg-white/5 rounded-full blur-xl opacity-50 group-hover:opacity-75 transition-opacity duration-1000"></div>
-                            <Loader2 className="w-16 h-16 text-slate-900 dark:text-slate-100 animate-spin relative z-10" />
+                    <div className="flex flex-col items-center justify-center pt-24 animate-in fade-in duration-500">
+                        {/* Enhanced spinner with glow */}
+                        <div className="relative w-20 h-20 mb-10">
+                            <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-xl animate-pulse" />
+                            <Loader2 className="w-20 h-20 text-emerald-500 animate-spin relative z-10" />
                         </div>
-                        <p className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2 animate-pulse">{loadingMsg}</p>
+
+                        {/* Progress steps */}
+                        <div className="flex items-center gap-2 mb-8">
+                            {PROCESSING_STEPS.map((step, idx) => {
+                                const Icon = step.icon
+                                const isActive = idx === currentStep
+                                const isComplete = idx < currentStep
+                                return (
+                                    <div
+                                        key={step.id}
+                                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-mono uppercase tracking-wider transition-all duration-300 ${
+                                            isActive
+                                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 scale-105'
+                                                : isComplete
+                                                    ? 'bg-white/5 border-white/10 text-slate-400'
+                                                    : 'bg-transparent border-white/5 text-slate-600 opacity-50'
+                                        }`}
+                                    >
+                                        {isComplete ? (
+                                            <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                        ) : (
+                                            <Icon className={`w-3 h-3 ${isActive ? 'animate-pulse' : ''}`} />
+                                        )}
+                                        <span className="hidden md:inline">{step.label}</span>
+                                    </div>
+                                )
+                            })}
+                        </div>
+
+                        {/* Status message */}
+                        <p className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2">{loadingMsg}</p>
                         <p className="text-sm text-slate-400 dark:text-slate-500 font-mono">Running logic checks...</p>
                     </div>
                 )}
 
-                {/* PHASE 3/4: RESULTS */}
+                {/* PHASE 3: RESULTS */}
                 {phase === "RESULTS" && result && (
                     <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 space-y-12">
 
@@ -134,7 +175,7 @@ export default function AuditPage() {
                             <div className="flex items-center gap-4">
                                 <ExplainabilityToggle mode={explainabilityMode} onChange={setExplainabilityMode} />
                                 <button
-                                    onClick={() => { setResult(null); setPhase("INPUT"); setSelectedClaimId(null); }}
+                                    onClick={() => { setResult(null); setPhase("INPUT"); setSelectedClaimId(null); setCurrentStep(0); }}
                                     className="text-sm font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors underline underline-offset-4"
                                 >
                                     New Audit
@@ -146,8 +187,6 @@ export default function AuditPage() {
                         <div className="relative">
                             <div className="absolute -inset-4 bg-slate-200/50 dark:bg-white/[0.02] rounded-3xl blur-2xl -z-10" />
                             {(() => {
-
-                                // Use Backend Values Directly (Canonical Contract v1.3.9)
                                 console.log("RAW RISK FROM BACKEND:", result.hallucination_score, result.overall_risk)
 
                                 const finalScore = typeof result.hallucination_score === "number"
@@ -155,7 +194,6 @@ export default function AuditPage() {
                                     : 0.0
                                 const finalLabel = result.overall_risk || "HIGH"
 
-                                // Use Backend Summary (No Frontend Recalculation)
                                 const summ = result.summary || {}
                                 const normalizedSummary = {
                                     Verified: summ.supported || 0,
@@ -172,7 +210,7 @@ export default function AuditPage() {
                                             summary={normalizedSummary}
                                         />
                                         {finalScore === 0 && normalizedSummary.Uncertain > 0 && (
-                                            <div className="mt-2 text-center">
+                                            <div className="mt-2 text-center animate-in fade-in duration-500 delay-500">
                                                 <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded border border-amber-100 dark:border-amber-900/50">
                                                     Risk is driven by uncertainty, not verified correctness.
                                                 </span>
@@ -197,7 +235,7 @@ export default function AuditPage() {
                                 )}
                             </div>
 
-                            {/* The Paper - CONSTRAINED HEIGHT */}
+                            {/* The Paper */}
                             <div className="flex flex-col lg:flex-row">
                                 <div className="flex-1 py-12 px-8 md:px-12 bg-white dark:bg-black shadow-sm border-r border-slate-100 dark:border-border-subtle max-h-[600px] overflow-y-auto">
                                     <AuditedText

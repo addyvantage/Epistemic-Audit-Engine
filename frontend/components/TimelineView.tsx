@@ -117,6 +117,11 @@ export function TimelineView({ claims, onClaimClick, activeClaimId, explainabili
     )
 }
 
+import { motion } from "framer-motion"
+import { PREMIUM_EASE } from "@/lib/motion-variants"
+
+const MotionButton = motion.button as any
+
 function ClaimNode({ claim, idx, isActive, onClaimClick, ref }: any) {
     const verdict = (claim.verification?.verdict || "UNCERTAIN") as "SUPPORTED" | "SUPPORTED_WEAK" | "REFUTED" | "UNCERTAIN"
 
@@ -131,16 +136,18 @@ function ClaimNode({ claim, idx, isActive, onClaimClick, ref }: any) {
 
     return (
         <div className="snap-center flex flex-col items-center gap-3 min-w-[72px] relative z-10">
-            <button
+            <MotionButton
                 ref={ref}
                 onClick={() => onClaimClick(claim.claim_id)}
+                whileHover={{ scale: 1.2, filter: "brightness(1.1)" }}
+                whileTap={{ scale: 0.95 }}
+                animate={{ scale: isActive ? 1.2 : 1 }}
+                transition={{ duration: 0.2, ease: PREMIUM_EASE }}
                 className={`
                     w-4 h-4 rounded-full
                     ${color}
-                    transition-all duration-300 ease-out
-                    hover:scale-110 hover:brightness-110
                     focus:outline-none 
-                    ${isActive ? 'scale-125 ring-4 ring-slate-100 dark:ring-white/10 brightness-110' : 'opacity-90'}
+                    ${isActive ? 'ring-4 ring-slate-100 dark:ring-white/10 brightness-110' : 'opacity-90'}
                 `}
                 aria-label={`Select claim ${idx + 1}`}
             />

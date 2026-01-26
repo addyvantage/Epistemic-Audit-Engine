@@ -1,5 +1,11 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Info } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { PREMIUM_EASE } from '@/lib/motion-variants'
+
+// --- TypeScript Fix ---
+const MotionDiv = motion.div as any
+
 
 interface AuditSummaryProps {
     overallRisk: "LOW" | "MEDIUM" | "HIGH"
@@ -7,11 +13,46 @@ interface AuditSummaryProps {
     summary: Record<string, number>
 }
 
+// Custom hook for count-up animation
+function useCountUp(target: number, duration: number = 1500, delay: number = 300) {
+    const [value, setValue] = useState(0)
+
+    useEffect(() => {
+        const timeout = setTimeout(() => {
+            const startTime = Date.now()
+            const animate = () => {
+                const elapsed = Date.now() - startTime
+                const progress = Math.min(elapsed / duration, 1)
+                // Ease-out cubic
+                const eased = 1 - Math.pow(1 - progress, 3)
+                setValue(target * eased)
+                if (progress < 1) {
+                    requestAnimationFrame(animate)
+                }
+            }
+            animate()
+        }, delay)
+        return () => clearTimeout(timeout)
+    }, [target, duration, delay])
+
+    return value
+}
+
 export function AuditSummary({ overallRisk, hallucinationScore, summary }: AuditSummaryProps) {
+    const animatedScore = useCountUp(hallucinationScore, 1500, 300)
+    const [progressWidth, setProgressWidth] = useState(0)
+
+    useEffect(() => {
+        const timeout = setTimeout(() => {
+            setProgressWidth(hallucinationScore * 100)
+        }, 500)
+        return () => clearTimeout(timeout)
+    }, [hallucinationScore])
+
     const riskColors = {
-        LOW: "bg-green-100 text-green-800 border-green-200 shadow-green-100",
-        MEDIUM: "bg-amber-100 text-amber-800 border-amber-200 shadow-amber-100",
-        HIGH: "bg-red-100 text-red-800 border-red-200 shadow-red-100"
+        LOW: "bg-green-100 text-green-800 border-green-200 shadow-green-100 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800",
+        MEDIUM: "bg-amber-100 text-amber-800 border-amber-200 shadow-amber-100 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800",
+        HIGH: "bg-red-100 text-red-800 border-red-200 shadow-red-100 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800"
     }
 
     // Calculate percentage of claims verified
@@ -30,7 +71,7 @@ export function AuditSummary({ overallRisk, hallucinationScore, summary }: Audit
                 </div>
             </div>
 
-            {/* 2. Score with Tooltip */}
+            {/* 2. Score with Tooltip - Enhanced with Count-Up */}
             <div className="flex flex-col justify-center border-r border-slate-100 dark:border-border-subtle pr-8 relative">
                 <div className="text-xs font-mono uppercase tracking-widest text-slate-400 mb-2 font-semibold flex items-center gap-2 group cursor-help relative w-fit">
                     Risk Score
@@ -47,38 +88,51 @@ export function AuditSummary({ overallRisk, hallucinationScore, summary }: Audit
                     </div>
                 </div>
 
-                <div className="flex items-baseline gap-2">
-                    <span className="text-4xl font-bold text-slate-900 dark:text-slate-100 tracking-tighter">
-                        {hallucinationScore.toFixed(2)}
+                <MotionDiv
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.5, ease: PREMIUM_EASE }}
+                    className="flex items-baseline gap-2"
+                >
+                    <span className="text-4xl font-bold text-slate-900 dark:text-slate-100 tracking-tighter tabular-nums">
+                        {animatedScore.toFixed(2)}
                     </span>
                     <span className="text-sm text-slate-400 font-medium">/ 1.00</span>
-                </div>
-                <div className="mt-2 h-1.5 w-full bg-slate-100 dark:bg-graphite rounded-full overflow-hidden">
-                    <div
-                        className="h-full bg-slate-900 dark:bg-emerald-500 rounded-full transition-all duration-1000 ease-out"
-                        style={{ width: `${hallucinationScore * 100}%` }}
+                </MotionDiv>
+                <div className="mt-2 h-2 w-full bg-slate-100 dark:bg-graphite rounded-full overflow-hidden">
+                    <MotionDiv
+                        initial={{ width: 0 }}
+                        animate={{ width: `${progressWidth}%` }}
+                        transition={{ duration: 1.2, delay: 0.3, ease: PREMIUM_EASE }}
+                        className={`h-full rounded-full ${hallucinationScore < 0.3
+                            ? 'bg-emerald-500'
+                            : hallucinationScore < 0.6
+                                ? 'bg-amber-500'
+                                : 'bg-red-500'
+                            }`}
                     />
                 </div>
             </div>
 
-            {/* 3. Stats Grid */}
+            {/* 3. Stats Grid - Enhanced with Stagger */}
             <div className="grid grid-cols-2 gap-4">
-                <div className="bg-slate-50 dark:bg-graphite p-3 rounded-lg border border-slate-100 dark:border-border-subtle">
-                    <div className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mb-1">Claims</div>
-                    <div className="text-xl font-bold text-slate-800 dark:text-slate-200">{totalClaims}</div>
-                </div>
-                <div className="bg-slate-50 dark:bg-graphite p-3 rounded-lg border border-slate-100 dark:border-border-subtle">
-                    <div className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mb-1">Verified</div>
-                    <div className="text-xl font-bold text-green-700">{supported}</div>
-                </div>
-                <div className="bg-slate-50 dark:bg-graphite p-3 rounded-lg border border-slate-100 dark:border-border-subtle">
-                    <div className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mb-1">Refuted</div>
-                    <div className="text-xl font-bold text-red-700 dark:text-red-400">{summary.Refuted || 0}</div>
-                </div>
-                <div className="bg-slate-50 dark:bg-graphite p-3 rounded-lg border border-slate-100 dark:border-border-subtle">
-                    <div className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mb-1">Uncertain</div>
-                    <div className="text-xl font-bold text-amber-700 dark:text-amber-400">{summary.Uncertain || 0}</div>
-                </div>
+                {[
+                    { label: 'Claims', value: totalClaims, color: 'text-slate-800 dark:text-slate-200' },
+                    { label: 'Verified', value: supported, color: 'text-emerald-600 dark:text-emerald-400' },
+                    { label: 'Refuted', value: summary.Refuted || 0, color: 'text-red-600 dark:text-red-400' },
+                    { label: 'Uncertain', value: summary.Uncertain || 0, color: 'text-amber-600 dark:text-amber-400' },
+                ].map((stat, idx) => (
+                    <MotionDiv
+                        key={stat.label}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: 0.5 + idx * 0.1, ease: PREMIUM_EASE }}
+                        className="bg-slate-50 dark:bg-graphite p-3 rounded-lg border border-slate-100 dark:border-border-subtle"
+                    >
+                        <div className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold mb-1">{stat.label}</div>
+                        <div className={`text-xl font-bold tabular-nums ${stat.color}`}>{stat.value}</div>
+                    </MotionDiv>
+                ))}
             </div>
 
         </div>

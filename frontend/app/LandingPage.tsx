@@ -1,8 +1,29 @@
 "use client"
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
 import { ArrowRight, ShieldCheck, Search, Scale, AlertTriangle, FileText, Landmark, Globe, FileSearch, XCircle, AlertOctagon, Moon, Sun } from 'lucide-react'
 import Link from 'next/link'
+import {
+    fadeUp,
+    staggerContainer,
+    staggerItem,
+    scaleIn,
+    dramaticReveal,
+    listItem,
+    viewportOnce,
+    PREMIUM_EASE,
+    cardLift
+} from '@/lib/motion-variants'
+
+// --- TypeScript Fix for Framer Motion 12 ---
+const MotionDiv = motion.div as any
+const MotionH1 = motion.h1 as any
+const MotionH2 = motion.h2 as any
+const MotionH3 = motion.h3 as any
+const MotionP = motion.p as any
+const MotionButton = motion.button as any
+const MotionSpan = motion.span as any
+
 
 // --- Hooks ---
 
@@ -79,165 +100,212 @@ function useGuidedCursor(
 
 // --- Components ---
 
-// Section 1: Hero
+// Section 1: Hero (Enhanced with Scroll Parallax)
 const HeroSection = () => {
+    const heroRef = useRef<HTMLElement | null>(null)
+    const { scrollYProgress } = useScroll({
+        target: heroRef as React.RefObject<HTMLElement>,
+        offset: ["start start", "end start"]
+    })
+
+    // Parallax transforms
+    const heroY = useTransform(scrollYProgress, [0, 1], [0, 150])
+    const heroOpacity = useTransform(scrollYProgress, [0, 0.5], [1, 0])
+    const glowY = useTransform(scrollYProgress, [0, 1], [0, -100])
+    const glowScale = useTransform(scrollYProgress, [0, 0.5], [1, 1.2])
+
     return (
-        <section className="min-h-screen flex flex-col items-center justify-center text-center px-4 relative overflow-hidden bg-white dark:bg-transparent selection:bg-emerald-500/30">
-            {/* Stage Light Glow */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-emerald-500/5 blur-[120px] rounded-full pointer-events-none mix-blend-screen dark:mix-blend-plus-lighter opacity-0 dark:opacity-100 transition-opacity duration-1000" />
+        <section
+            ref={heroRef}
+            className="min-h-screen flex flex-col items-center justify-center text-center px-4 relative overflow-hidden bg-white dark:bg-transparent selection:bg-emerald-500/30"
+        >
+            {/* Enhanced Stage Light Glow with Parallax */}
+            <MotionDiv
+                style={{ y: glowY, scale: glowScale }}
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[900px] bg-emerald-500/10 blur-[150px] rounded-full pointer-events-none mix-blend-screen dark:mix-blend-plus-lighter opacity-0 dark:opacity-100 transition-opacity duration-1000"
+            />
+
+            {/* Secondary ambient glow */}
+            <MotionDiv
+                style={{ y: useTransform(scrollYProgress, [0, 1], [0, -50]) }}
+                className="absolute top-1/4 right-1/4 w-[400px] h-[400px] bg-white/5 blur-[100px] rounded-full pointer-events-none opacity-0 dark:opacity-100"
+            />
 
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(15,23,42,0.03),transparent_60%)] dark:hidden" />
 
-            <div className="max-w-5xl mx-auto relative z-10">
-                {/* Authority Badge */}
-                <motion.div
-                    {...({
-                        initial: { opacity: 0, y: 10 },
-                        animate: { opacity: 1, y: 0 },
-                        transition: { duration: 0.8, ease: "easeOut" },
-                        className: "inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-emerald-500/10 text-slate-600 dark:text-emerald-400 text-[10px] font-bold tracking-widest uppercase mb-10 border border-slate-200 dark:border-emerald-500/20 backdrop-blur-md shadow-sm"
-                    } as any)}
+            <MotionDiv
+                style={{ y: heroY, opacity: heroOpacity }}
+                className="max-w-5xl mx-auto relative z-10"
+            >
+                {/* Authority Badge - Enhanced */}
+                <MotionDiv
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ duration: 0.8, ease: PREMIUM_EASE }}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-100 dark:bg-emerald-500/10 text-slate-600 dark:text-emerald-400 text-[10px] font-bold tracking-widest uppercase mb-10 border border-slate-200 dark:border-emerald-500/20 backdrop-blur-md shadow-sm dark:shadow-glow-sm"
                 >
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <MotionDiv
+                        animate={{ scale: [1, 1.2, 1], opacity: [0.7, 1, 0.7] }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                        className="w-1.5 h-1.5 rounded-full bg-emerald-500"
+                    />
                     Research Preview • System Online
-                </motion.div>
+                </MotionDiv>
 
-                <motion.h1
-                    {...({
-                        initial: { opacity: 0, y: 20 },
-                        animate: { opacity: 1, y: 0 },
-                        transition: { duration: 0.8, delay: 0.15, ease: "easeOut" },
-                        className: "text-5xl md:text-7xl font-medium tracking-[-0.03em] leading-[1.05] mb-8 text-slate-900 dark:text-transparent dark:bg-clip-text dark:bg-gradient-to-b dark:from-white dark:via-neutral-100 dark:to-neutral-400 drop-shadow-sm dark:drop-shadow-[0_0_25px_rgba(255,255,255,0.1)]"
-                    } as any)}
+                <MotionH1
+                    initial={{ opacity: 0, y: 30, filter: "blur(10px)" }}
+                    animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                    transition={{ duration: 1, delay: 0.15, ease: PREMIUM_EASE }}
+                    className="text-5xl md:text-7xl font-medium tracking-[-0.03em] leading-[1.05] mb-8 text-slate-900 dark:text-transparent dark:bg-clip-text dark:bg-gradient-to-b dark:from-white dark:via-neutral-100 dark:to-neutral-400 drop-shadow-sm dark:drop-shadow-[0_0_30px_rgba(255,255,255,0.15)]"
                 >
                     Audit where AI confidence <br />
                     exceeds evidence.
-                </motion.h1>
+                </MotionH1>
 
-                <motion.p
-                    {...({
-                        initial: { opacity: 0, y: 20 },
-                        animate: { opacity: 1, y: 0 },
-                        transition: { duration: 0.8, delay: 0.25, ease: "easeOut" },
-                        className: "text-xl md:text-2xl text-slate-600 dark:text-neutral-400 max-w-3xl mx-auto mb-14 leading-relaxed font-light antialiased"
-                    } as any)}
+                <MotionP
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.8, delay: 0.3, ease: PREMIUM_EASE }}
+                    className="text-xl md:text-2xl text-slate-600 dark:text-neutral-400 max-w-3xl mx-auto mb-14 leading-relaxed font-light antialiased"
                 >
                     Not fact-checking. Not binary verification. <br className="hidden md:block" />
                     A risk-aware analysis of confidence versus evidence.
-                </motion.p>
+                </MotionP>
 
-                {/* v2.0 Hero Navigation: Flagship CTA */}
-                <motion.div
-                    {...({
-                        initial: { opacity: 0, y: 20 },
-                        animate: { opacity: 1, y: 0 },
-                        transition: { duration: 0.8, delay: 0.35, ease: "easeOut" },
-                        className: "flex flex-col md:flex-row items-center justify-center gap-5"
-                    } as any)}
+                {/* Hero CTAs - Enhanced with stagger */}
+                <MotionDiv
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.8, delay: 0.45, ease: PREMIUM_EASE }}
+                    className="flex flex-col md:flex-row items-center justify-center gap-5"
                 >
                     <Link href="/audit">
-                        <motion.button
-                            {...({
-                                whileHover: { scale: 1.02 },
-                                whileTap: { scale: 0.98 },
-                                transition: { duration: 0.2, ease: "easeOut" },
-                                className: "group relative inline-flex items-center gap-3 px-8 py-4 rounded-full bg-slate-900 dark:bg-emerald-600 text-white font-medium text-sm shadow-[0_4px_10px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.1)] dark:shadow-[0_10px_30px_rgba(16,185,129,0.25),inset_0_1px_0_rgba(255,255,255,0.2)] hover:bg-slate-800 dark:hover:bg-emerald-500 transition-all duration-300",
-                                "aria-label": "Run an epistemic audit"
-                            } as any)}
+                        <MotionButton
+                            whileHover={{ scale: 1.02, boxShadow: "0 15px 40px rgba(16,185,129,0.3)" }}
+                            whileTap={{ scale: 0.98 }}
+                            transition={{ duration: 0.2, ease: PREMIUM_EASE }}
+                            className="group relative inline-flex items-center gap-3 px-8 py-4 rounded-full bg-slate-900 dark:bg-emerald-600 text-white font-medium text-sm shadow-[0_4px_10px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.1)] dark:shadow-[0_10px_30px_rgba(16,185,129,0.25),inset_0_1px_0_rgba(255,255,255,0.2)] hover:bg-slate-800 dark:hover:bg-emerald-500 transition-all duration-300"
+                            aria-label="Run an epistemic audit"
                         >
                             <span className="relative z-10 tracking-wide">Run Epistemic Audit</span>
                             <ArrowRight className="w-4 h-4 relative z-10 transition-transform group-hover:translate-x-1" />
-                        </motion.button>
+                        </MotionButton>
                     </Link>
 
                     <Link href="/how-it-works">
-                        <motion.button
-                            {...({
-                                whileHover: { scale: 1.02, backgroundColor: "rgba(255,255,255,0.08)" },
-                                whileTap: { scale: 0.98 },
-                                transition: { duration: 0.2, ease: "easeOut" },
-                                className: "group relative inline-flex items-center px-8 py-4 bg-transparent border border-slate-200 dark:border-white/10 text-slate-600 dark:text-neutral-400 rounded-full font-medium tracking-wide text-sm transition-colors hover:border-slate-300 dark:hover:border-white/20 dark:hover:text-neutral-200",
-                                "aria-label": "View methodology"
-                            } as any)}
+                        <MotionButton
+                            whileHover={{ scale: 1.02, borderColor: "rgba(255,255,255,0.2)" }}
+                            whileTap={{ scale: 0.98 }}
+                            transition={{ duration: 0.2, ease: PREMIUM_EASE }}
+                            className="group relative inline-flex items-center px-8 py-4 bg-transparent border border-slate-200 dark:border-white/10 text-slate-600 dark:text-neutral-400 rounded-full font-medium tracking-wide text-sm transition-colors hover:border-slate-300 dark:hover:border-white/20 dark:hover:text-neutral-200"
+                            aria-label="View methodology"
                         >
                             <span>Read Methodology</span>
-                        </motion.button>
+                        </MotionButton>
                     </Link>
-                </motion.div>
-            </div>
+                </MotionDiv>
+            </MotionDiv>
+
+            {/* Scroll indicator */}
+            <MotionDiv
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1.5, duration: 1 }}
+                style={{ opacity: useTransform(scrollYProgress, [0, 0.1], [1, 0]) }}
+                className="absolute bottom-12 left-1/2 -translate-x-1/2"
+            >
+                <MotionDiv
+                    animate={{ y: [0, 8, 0] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                    className="w-6 h-10 rounded-full border border-slate-300 dark:border-white/20 flex items-start justify-center p-2"
+                >
+                    <MotionDiv
+                        animate={{ y: [0, 8, 0], opacity: [1, 0.3, 1] }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                        className="w-1 h-2 rounded-full bg-slate-400 dark:bg-white/40"
+                    />
+                </MotionDiv>
+            </MotionDiv>
         </section>
     )
 }
 
-// Section 2: Capabilities
+// Section 2: Capabilities (Enhanced with Stagger)
 const CapabilitiesSection = () => {
     const cards = [
         {
             title: "Atomic Claims",
             desc: "Prevents rhetorical masking of weak facts by isolating falsifiable units.",
-            glyph: <Search className="w-5 h-5 text-slate-400" />
+            glyph: <Search className="w-5 h-5" />
         },
         {
             title: "Structured Evidence",
             desc: "Blocks hallucinations backed only by model consensus using authoritative knowledge graphs.",
-            glyph: <Globe className="w-5 h-5 text-slate-400" />
+            glyph: <Globe className="w-5 h-5" />
         },
         {
             title: "Epistemic Risk",
             desc: "Quantifies overconfidence instead of hiding it. Rewards calibrated uncertainty.",
-            glyph: <AlertTriangle className="w-5 h-5 text-slate-400" />
+            glyph: <AlertTriangle className="w-5 h-5" />
         }
     ]
 
     return (
         <section className="py-32 px-4 bg-transparent">
             <div className="max-w-6xl mx-auto">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <MotionDiv
+                    variants={staggerContainer}
+                    initial="hidden"
+                    whileInView="visible"
+                    viewport={viewportOnce}
+                    className="grid grid-cols-1 md:grid-cols-3 gap-8"
+                >
                     {cards.map((card, idx) => (
-                        <motion.div
+                        <MotionDiv
                             key={card.title}
-                            {...({
-                                initial: { opacity: 0, scale: 0.98, y: 20 },
-                                whileInView: { opacity: 1, scale: 1, y: 0 },
-                                transition: { duration: 0.5, delay: idx * 0.1, ease: "easeOut" },
-                                className: "p-8 rounded-2xl border border-dashed border-neutral-800 hover:border-neutral-700 transition-all duration-500 group"
-                            } as any)}
+                            variants={staggerItem}
+                            whileHover={{
+                                borderColor: "rgba(255, 255, 255, 0.15)",
+                                backgroundColor: "rgba(255, 255, 255, 0.02)",
+                                transition: { duration: 0.3 }
+                            }}
+                            className="p-8 rounded-2xl border border-white/5 dark:border-neutral-800 hover:border-white/10 dark:hover:border-neutral-700 transition-all duration-500 group relative overflow-hidden"
                         >
-                            <div className="mb-6 p-0 w-fit rounded-lg transition-colors">
-                                {card.glyph}
+                            {/* Hover glow effect */}
+                            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-radial from-emerald-500/5 via-transparent to-transparent pointer-events-none" />
+
+                            <div className="relative z-10">
+                                <div className="mb-6 p-3 w-fit rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 group-hover:border-emerald-500/20 transition-all duration-300">
+                                    {card.glyph}
+                                </div>
+                                <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-3 group-hover:text-black dark:group-hover:text-white transition-colors">{card.title}</h3>
+                                <p className="text-slate-500 dark:text-slate-400 leading-relaxed font-light">{card.desc}</p>
                             </div>
-                            <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-3 group-hover:text-black dark:group-hover:text-white transition-colors">{card.title}</h3>
-                            <p className="text-slate-500 dark:text-slate-400 leading-relaxed font-light">{card.desc}</p>
-                        </motion.div>
+                        </MotionDiv>
                     ))}
-                </div>
+                </MotionDiv>
             </div>
         </section>
     )
 }
 
-// Section 3: Positioning
+// Section 3: Positioning (Enhanced)
 const PositioningSection = () => (
     <section className="py-32 px-4 bg-transparent border-y border-slate-100 dark:border-border-subtle">
         <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
-            <div>
-                <motion.h2
-                    {...({
-                        initial: { opacity: 0, x: -20 },
-                        whileInView: { opacity: 1, x: 0 },
-                        className: "text-3xl font-medium text-neutral-900 dark:text-neutral-200 mb-8 leading-tight tracking-[-0.02em]"
-                    } as any)}
+            <MotionDiv
+                initial="hidden"
+                whileInView="visible"
+                viewport={viewportOnce}
+                variants={staggerContainer}
+            >
+                <MotionH2
+                    variants={fadeUp}
+                    className="text-3xl font-medium text-neutral-900 dark:text-neutral-200 mb-8 leading-tight tracking-[-0.02em]"
                 >
-                    Why hallucinations <br />aren’t binary
-                </motion.h2>
-                <motion.div
-                    {...({
-                        initial: { opacity: 0, y: 10 },
-                        whileInView: { opacity: 1, y: 0 },
-                        transition: { delay: 0.2 },
-                        className: "space-y-6"
-                    } as any)}
-                >
+                    Why hallucinations <br />aren't binary
+                </MotionH2>
+                <MotionDiv variants={fadeUp} className="space-y-6">
                     <p className="text-lg text-slate-600 dark:text-slate-400 font-light leading-relaxed">
                         Modern AI failures are rarely outright falsehoods.
                         They are overconfident claims weakly grounded in evidence.
@@ -246,38 +314,45 @@ const PositioningSection = () => (
                         This system is designed to surface that risk — explicitly.
                         By decomposing text into discrete nodes of inquiry, we move past "True/False" toward "Calibrated/Uncalibrated."
                     </p>
-                </motion.div>
-            </div>
+                </MotionDiv>
+            </MotionDiv>
 
-            <div className="relative p-12 rounded-3xl bg-neutral-900 dark:bg-neutral-900/80 border border-neutral-800 overflow-hidden min-h-[400px] flex flex-col justify-center">
+            <MotionDiv
+                initial={{ opacity: 0, scale: 0.95 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={viewportOnce}
+                transition={{ duration: 0.8, ease: PREMIUM_EASE }}
+                className="relative p-12 rounded-3xl bg-neutral-900 dark:bg-neutral-900/80 border border-neutral-800 overflow-hidden min-h-[400px] flex flex-col justify-center"
+            >
+                {/* Background glow */}
+                <div className="absolute inset-0 bg-gradient-radial from-emerald-500/10 via-transparent to-transparent opacity-50" />
+
                 <div className="relative z-10 flex flex-col gap-6">
                     {['Text', 'Claims', 'Evidence', 'Risk Score'].map((item, idx) => (
                         <div key={item} className="flex items-center gap-4">
-                            <motion.div
-                                {...({
-                                    initial: { width: 0, opacity: 0 },
-                                    whileInView: { width: '100%', opacity: 1 },
-                                    transition: { duration: 1.2, delay: idx * 0.3, ease: "easeInOut" },
-                                    className: "h-0.5 bg-slate-700 relative"
-                                } as any)}
+                            <MotionDiv
+                                initial={{ width: 0, opacity: 0 }}
+                                whileInView={{ width: '100%', opacity: 1 }}
+                                viewport={{ once: true }}
+                                transition={{ duration: 1.2, delay: idx * 0.3, ease: PREMIUM_EASE }}
+                                className="h-0.5 bg-slate-700 relative"
                             >
                                 {idx < 3 && (
-                                    <motion.div
-                                        {...({
-                                            initial: { opacity: 0 },
-                                            whileInView: { opacity: 1 },
-                                            transition: { delay: (idx + 1) * 0.3 },
-                                            className: "absolute -right-1 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-slate-500 shadow-[0_0_10px_rgba(255,255,255,0.2)]"
-                                        } as any)}
+                                    <MotionDiv
+                                        initial={{ opacity: 0, scale: 0 }}
+                                        whileInView={{ opacity: 1, scale: 1 }}
+                                        viewport={{ once: true }}
+                                        transition={{ delay: (idx + 1) * 0.3, duration: 0.3 }}
+                                        className="absolute -right-1 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"
                                     />
                                 )}
-                            </motion.div>
+                            </MotionDiv>
                             <span className="text-xs font-mono text-slate-400 uppercase tracking-widest whitespace-nowrap min-w-[100px]">{item}</span>
                         </div>
                     ))}
                 </div>
                 <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.05),transparent)]" />
-            </div>
+            </MotionDiv>
         </div>
     </section >
 )
@@ -463,7 +538,7 @@ const ShowcaseSection = () => {
             <div className="max-w-4xl mx-auto relative group">
                 <AnimatePresence>
                     {viewMode === 'GUIDED' && demoState !== 'INSPECT_FREELY' && (
-                        <motion.div
+                        <MotionDiv
                             key="cursor"
                             initial={false}
                             animate={{
@@ -483,11 +558,11 @@ const ShowcaseSection = () => {
                             {...({} as any)}
                         >
                             <div className="w-1.5 h-1.5 bg-slate-900 dark:bg-white rounded-full opacity-50" />
-                        </motion.div>
+                        </MotionDiv>
                     )}
                 </AnimatePresence>
 
-                <motion.div
+                <MotionDiv
                     ref={containerRef}
                     {...({
                         initial: { opacity: 0, y: 30 },
@@ -498,7 +573,7 @@ const ShowcaseSection = () => {
                     {/* Cognitive Anchor Hint */}
                     <AnimatePresence>
                         {(activeStep === 0 && demoState === 'INTENT_PAUSE' && viewMode === 'GUIDED') && (
-                            <motion.div
+                            <MotionDiv
                                 {...({
                                     initial: { opacity: 0, y: -10 },
                                     animate: { opacity: 1, y: 0 },
@@ -507,13 +582,13 @@ const ShowcaseSection = () => {
                                 } as any)}
                             >
                                 Analyzing Independent Claims
-                            </motion.div>
+                            </MotionDiv>
                         )}
                     </AnimatePresence>
 
                     <AnimatePresence>
                         {isCardVisible && (
-                            <motion.div
+                            <MotionDiv
                                 key="overlay-card"
                                 initial={{ opacity: 0, scale: 0.95, top: cardPos.top + 10, left: cardPos.left }}
                                 animate={{
@@ -572,7 +647,7 @@ const ShowcaseSection = () => {
                                             <span className="text-[9px] font-mono text-slate-400 dark:text-neutral-500 uppercase tracking-widest">Step {activeStep + 1} of {stages.length}</span>
                                         </div>
                                         <p className="text-[13px] text-slate-600 dark:text-neutral-300 leading-relaxed font-medium">{current.body}</p>
-                                        <motion.p
+                                        <MotionP
                                             key={`${activeStep}-note`}
                                             {...({
                                                 initial: { opacity: 0 },
@@ -582,7 +657,7 @@ const ShowcaseSection = () => {
                                             } as any)}
                                         >
                                             {current.microNote}
-                                        </motion.p>
+                                        </MotionP>
                                         <div className="pt-2 border-t border-slate-200/50 dark:border-white/5 italic text-[10px] text-slate-400 dark:text-neutral-500/80">
                                             {current.footer}
                                         </div>
@@ -593,7 +668,7 @@ const ShowcaseSection = () => {
                                             </div>
                                             <div className="h-1.5 w-full bg-slate-200/70 dark:bg-white/10 rounded-full overflow-hidden relative">
                                                 <div className="absolute inset-0 bg-gradient-to-r from-red-500/20 via-yellow-500/20 to-emerald-500/20" />
-                                                <motion.div
+                                                <MotionDiv
                                                     {...({
                                                         initial: { width: 0 },
                                                         animate: { width: `${current.risk}%` },
@@ -613,14 +688,14 @@ const ShowcaseSection = () => {
                                         </div>
                                     </div>
                                 </div>
-                            </motion.div>
+                            </MotionDiv>
                         )}
                     </AnimatePresence>
 
                     <div className="p-16 pt-32 flex-grow">
                         <div className="relative text-slate-700 dark:text-slate-300 font-light leading-relaxed max-w-2xl text-xl mx-auto space-y-8">
                             <div className="leading-relaxed select-none">
-                                <motion.span
+                                <MotionSpan
                                     ref={(el: HTMLSpanElement | null) => { claimRefs.current['CLAIM_ENTITY'] = el }}
                                     data-claim-id="CLAIM_ENTITY"
                                     {...({
@@ -639,8 +714,8 @@ const ShowcaseSection = () => {
                                             [SUBJECT: ENTITY]
                                         </span>
                                     )}
-                                </motion.span> that its quarterly {' '}
-                                <motion.span
+                                </MotionSpan> that its quarterly {' '}
+                                <MotionSpan
                                     ref={(el: HTMLSpanElement | null) => { claimRefs.current['CLAIM_REVENUE'] = el }}
                                     data-claim-id="CLAIM_REVENUE"
                                     style={{
@@ -660,7 +735,7 @@ const ShowcaseSection = () => {
                                 >
                                     revenue exceeded $20B in Q4
                                     {(isHighlightActive && activeStep === 0) && (
-                                        <motion.span
+                                        <MotionSpan
                                             {...({
                                                 layoutId: "shimmer",
                                                 className: "absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent w-full skew-x-12",
@@ -679,7 +754,7 @@ const ShowcaseSection = () => {
                                             </span>
                                         </div>
                                     )}
-                                </motion.span>
+                                </MotionSpan>
                                 , marking a continuation of its fiscal growth trajectory in the advertising sector.
                             </div>
                         </div>
@@ -692,7 +767,7 @@ const ShowcaseSection = () => {
                                 const isTimeActive = (isFocused && isHighlightActive) || viewMode === 'EXPERT'
                                 return (
                                     <div key={i} className="relative flex flex-col items-center">
-                                        <motion.div
+                                        <MotionDiv
                                             {...({
                                                 animate: {
                                                     opacity: isTimeActive ? 1 : 0.4,
@@ -709,13 +784,13 @@ const ShowcaseSection = () => {
                             <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-slate-100 dark:bg-slate-800/50 -z-0 translate-y-[-1px]" />
                         </div>
                     </div>
-                </motion.div>
+                </MotionDiv>
             </div >
         </section >
     )
 }
 
-// Section 5: Serious Use
+// Section 5: Serious Use (Enhanced)
 const SeriousUseSection = () => {
     const rows = [
         { label: "Research & Audit", icon: <FileSearch className="w-4 h-4" /> },
@@ -727,134 +802,220 @@ const SeriousUseSection = () => {
     return (
         <section className="py-32 px-4 bg-transparent">
             <div className="max-w-4xl mx-auto">
-                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] text-center mb-16">Designed for Strict Contexts</h2>
-                <div className="space-y-4">
+                <MotionH2
+                    initial={{ opacity: 0, y: 10 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={viewportOnce}
+                    className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] text-center mb-16"
+                >
+                    Designed for Strict Contexts
+                </MotionH2>
+                <MotionDiv
+                    variants={staggerContainer}
+                    initial="hidden"
+                    whileInView="visible"
+                    viewport={viewportOnce}
+                    className="space-y-4"
+                >
                     {rows.map((row, idx) => (
-                        <motion.div
+                        <MotionDiv
                             key={row.label}
-                            {...({
-                                initial: { opacity: 0, x: idx % 2 === 0 ? -12 : 12 },
-                                whileInView: { opacity: 1, x: 0 },
-                                className: "group flex items-center justify-between p-6 rounded-xl border border-dashed border-neutral-800 hover:border-neutral-700 transition-colors"
-                            } as any)}
+                            variants={listItem}
+                            whileHover={{
+                                borderColor: "rgba(255, 255, 255, 0.15)",
+                                x: 4,
+                                transition: { duration: 0.2 }
+                            }}
+                            className="group flex items-center justify-between p-6 rounded-xl border border-white/5 dark:border-neutral-800 hover:border-white/10 dark:hover:border-neutral-700 transition-all duration-300"
                         >
                             <div className="flex items-center gap-4">
-                                <motion.div
-                                    {...({
-                                        initial: { rotate: 3 },
-                                        whileInView: { rotate: 0 },
-                                        className: "p-2 bg-white dark:bg-white/5 rounded-lg border border-slate-200 dark:border-white/10 shadow-sm text-slate-500 dark:text-neutral-400 group-hover:text-slate-900 dark:group-hover:text-white transition-colors"
-                                    } as any)}
-                                >
+                                <div className="p-2 bg-white dark:bg-white/5 rounded-lg border border-slate-200 dark:border-white/10 shadow-sm text-slate-500 dark:text-neutral-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 group-hover:border-emerald-500/20 transition-all duration-300">
                                     {row.icon}
-                                </motion.div>
+                                </div>
                                 <span className="font-semibold text-slate-800 dark:text-slate-200">{row.label}</span>
                             </div>
-                            <span className="text-sm text-slate-400 dark:text-slate-500 font-light italic">Built for traceability, not persuasion.</span>
-                        </motion.div>
+                            <span className="text-sm text-slate-400 dark:text-slate-500 font-light italic hidden md:block">Built for traceability, not persuasion.</span>
+                        </MotionDiv>
                     ))}
-                </div>
+                </MotionDiv>
             </div>
         </section>
     )
 }
 
-// Section: Failure Modes
-const FailureModeSection = () => (
-    <section className="py-24 px-4 bg-transparent border-t border-slate-100 dark:border-slate-900">
-        <div className="max-w-3xl mx-auto text-left">
-            <div className="flex items-center gap-3 mb-8 text-slate-500 dark:text-slate-400">
-                <AlertOctagon className="w-5 h-5 opacity-50" />
-                <h3 className="text-sm font-bold uppercase tracking-widest">Where This System Can Fail</h3>
-            </div>
+// Section: Failure Modes (Enhanced)
+const FailureModeSection = () => {
+    const failures = [
+        {
+            title: "1. Outdated Structured Data",
+            desc: "If knowledge references (e.g. SEC filings) are stale, the engine may flag recent valid claims as unsupported.",
+            note: "(Disclosure: Latency gap ~24h)"
+        },
+        {
+            title: "2. Ambiguous Predicates",
+            desc: "Language with high semantic drift (e.g. \"revolutionary\") cannot be rigorously falsified.",
+            note: null
+        },
+        {
+            title: "3. Registry Gaps",
+            desc: "Claims referencing private datasets or non-public events are invisible to the verification layer.",
+            note: null
+        },
+        {
+            title: "4. Over-Compression",
+            desc: "Complex multi-part claims may be atomicized incorrectly, losing context.",
+            note: null
+        }
+    ]
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
-                <div className="space-y-2">
-                    <h4 className="text-xs font-mono font-semibold text-slate-900 dark:text-slate-200">1. Outdated Structured Data</h4>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-light">
-                        If knowledge references (e.g. SEC filings) are stale, the engine may flag recent valid claims as unsupported. <span className="text-slate-400 dark:text-slate-500 italic">(Disclosure: Latency gap ~24h)</span>
-                    </p>
-                </div>
-                <div className="space-y-2">
-                    <h4 className="text-xs font-mono font-semibold text-slate-900 dark:text-slate-200">2. Ambiguous Predicates</h4>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-light">
-                        Language with high semantic drift (e.g. "revolutionary") cannot be rigorously falsified.
-                    </p>
-                </div>
-                <div className="space-y-2">
-                    <h4 className="text-xs font-mono font-semibold text-slate-900 dark:text-slate-200">3. Registry Gaps</h4>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-light">
-                        Claims referencing private datasets or non-public events are invisible to the verification layer.
-                    </p>
-                </div>
-                <div className="space-y-2">
-                    <h4 className="text-xs font-mono font-semibold text-slate-900 dark:text-slate-200">4. Over-Compression</h4>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-light">
-                        Complex multi-part claims may be atomicized incorrectly, losing context.
-                    </p>
-                </div>
-            </div>
-        </div>
-    </section>
-)
+    return (
+        <section className="py-24 px-4 bg-transparent border-t border-slate-100 dark:border-slate-900">
+            <div className="max-w-3xl mx-auto text-left">
+                <MotionDiv
+                    initial={{ opacity: 0, y: 10 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={viewportOnce}
+                    className="flex items-center gap-3 mb-8 text-slate-500 dark:text-slate-400"
+                >
+                    <AlertOctagon className="w-5 h-5 opacity-50" />
+                    <h3 className="text-sm font-bold uppercase tracking-widest">Where This System Can Fail</h3>
+                </MotionDiv>
 
-// Section: Epistemic Refusal (Humility)
-const RefusalSection = () => (
-    <section className="py-24 px-4 bg-transparent border-t border-slate-100 dark:border-slate-900">
-        <div className="max-w-3xl mx-auto text-center">
-            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-12">System Constraints & Refusals</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
-                {[
-                    "Does NOT infer intent from text.",
-                    "Does NOT deference to model consensus.",
-                    "Does NOT collapse epistemic uncertainty.",
-                    "Does NOT validate non-falsifiable rhetoric."
-                ].map((item, i) => (
-                    <div key={i} className="flex items-start gap-4 p-4 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none transition-colors">
-                        <XCircle className="w-5 h-5 text-slate-300 dark:text-slate-600 mt-0.5 shrink-0" />
-                        <span className="text-sm text-slate-600 dark:text-slate-400 font-medium">{item}</span>
-                    </div>
-                ))}
+                <MotionDiv
+                    variants={staggerContainer}
+                    initial="hidden"
+                    whileInView="visible"
+                    viewport={viewportOnce}
+                    className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6"
+                >
+                    {failures.map((item) => (
+                        <MotionDiv key={item.title} variants={staggerItem} className="space-y-2">
+                            <h4 className="text-xs font-mono font-semibold text-slate-900 dark:text-slate-200">{item.title}</h4>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-light">
+                                {item.desc}
+                                {item.note && <span className="text-slate-400 dark:text-slate-500 italic"> {item.note}</span>}
+                            </p>
+                        </MotionDiv>
+                    ))}
+                </MotionDiv>
             </div>
-        </div>
-    </section>
-)
+        </section>
+    )
+}
 
-// Section 6: Boundaries (Final Section)
+// Section: Epistemic Refusal (Humility) - Enhanced
+const RefusalSection = () => {
+    const refusals = [
+        "Does NOT infer intent from text.",
+        "Does NOT deference to model consensus.",
+        "Does NOT collapse epistemic uncertainty.",
+        "Does NOT validate non-falsifiable rhetoric."
+    ]
+
+    return (
+        <section className="py-24 px-4 bg-transparent border-t border-slate-100 dark:border-slate-900">
+            <div className="max-w-3xl mx-auto text-center">
+                <MotionH3
+                    initial={{ opacity: 0, y: 10 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={viewportOnce}
+                    className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-12"
+                >
+                    System Constraints & Refusals
+                </MotionH3>
+                <MotionDiv
+                    variants={staggerContainer}
+                    initial="hidden"
+                    whileInView="visible"
+                    viewport={viewportOnce}
+                    className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left"
+                >
+                    {refusals.map((item, i) => (
+                        <MotionDiv
+                            key={i}
+                            variants={staggerItem}
+                            whileHover={{ borderColor: "rgba(239, 68, 68, 0.2)", transition: { duration: 0.2 } }}
+                            className="flex items-start gap-4 p-5 rounded-xl bg-white dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 shadow-sm dark:shadow-none transition-all duration-300 group"
+                        >
+                            <XCircle className="w-5 h-5 text-slate-300 dark:text-slate-600 mt-0.5 shrink-0 group-hover:text-red-400 transition-colors" />
+                            <span className="text-sm text-slate-600 dark:text-slate-400 font-medium">{item}</span>
+                        </MotionDiv>
+                    ))}
+                </MotionDiv>
+            </div>
+        </section>
+    )
+}
+
+// Section 6: Boundaries (Final Section) - Enhanced with Progressive Reveal
 const BoundariesSection = () => (
-    <section className="py-40 px-4 bg-transparent text-slate-300">
-        <motion.div
-            {...({
-                initial: { opacity: 0 },
-                whileInView: { opacity: 1 },
-                className: "max-w-3xl mx-auto text-center space-y-12"
-            } as any)}
+    <section className="py-40 px-4 bg-transparent text-slate-300 relative overflow-hidden">
+        {/* Subtle top vignette */}
+        <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-black/20 to-transparent pointer-events-none" />
+
+        <MotionDiv
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-50px" }}
+            variants={staggerContainer}
+            className="max-w-3xl mx-auto text-center space-y-12 relative z-10"
         >
             <div>
-                <h2 className="text-4xl font-light leading-tight tracking-tight mb-6">
+                <MotionH2
+                    variants={fadeUp}
+                    className="text-4xl font-light leading-tight tracking-tight mb-6 text-slate-800 dark:text-slate-200"
+                >
                     This is not a truth oracle. <br />
-                    It does not declare facts “true” or “false.”
-                </h2>
-                <p className="text-xl text-slate-500 font-light leading-relaxed">
+                    <MotionSpan
+                        initial={{ opacity: 0 }}
+                        whileInView={{ opacity: 1 }}
+                        viewport={{ once: true }}
+                        transition={{ delay: 0.4, duration: 0.8 }}
+                    >
+                        It does not declare facts "true" or "false."
+                    </MotionSpan>
+                </MotionH2>
+                <MotionP
+                    variants={fadeUp}
+                    className="text-xl text-slate-500 font-light leading-relaxed"
+                >
                     It exposes epistemic gaps — where confidence exceeds evidence. <br />
-                    A tool for human experts to audit the recursive overconfidence of large language models.
-                </p>
-                <div className="text-xs font-mono text-slate-500 uppercase tracking-widest pt-8 border-t border-slate-900/50">
+                    <MotionSpan
+                        initial={{ opacity: 0 }}
+                        whileInView={{ opacity: 1 }}
+                        viewport={{ once: true }}
+                        transition={{ delay: 0.6, duration: 0.8 }}
+                        className="text-slate-400"
+                    >
+                        A tool for human experts to audit the recursive overconfidence of large language models.
+                    </MotionSpan>
+                </MotionP>
+                <MotionDiv
+                    variants={fadeUp}
+                    className="text-xs font-mono text-slate-500 uppercase tracking-widest pt-8 border-t border-slate-200 dark:border-slate-800 mt-8"
+                >
                     System State: Nominal • Research Artifact v1.5.1
-                </div>
+                </MotionDiv>
             </div>
 
-            {/* System Status Footer */}
-            <div className="pt-20 flex flex-col items-center gap-2 border-t border-slate-900/50">
-                <div className="inline-flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/50"></div>
-                    <div className="text-[10px] font-mono text-slate-600 uppercase tracking-widest">System Status: Active</div>
+            {/* System Status Footer - Enhanced */}
+            <MotionDiv
+                variants={fadeUp}
+                className="pt-20 flex flex-col items-center gap-3 border-t border-slate-200 dark:border-slate-800"
+            >
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/50 dark:bg-white/5 border border-slate-200 dark:border-white/10">
+                    <MotionDiv
+                        animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                        className="w-1.5 h-1.5 rounded-full bg-emerald-500"
+                    />
+                    <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-widest">System Status: Active</span>
                 </div>
-                <div className="text-xs text-slate-700 font-light">
+                <div className="text-xs text-slate-500 dark:text-slate-600 font-light">
                     Epistemic Audit Engine v1.5.1 (Research Artifact)
                 </div>
-            </div>
-        </motion.div>
+            </MotionDiv>
+        </MotionDiv>
     </section>
 )
 

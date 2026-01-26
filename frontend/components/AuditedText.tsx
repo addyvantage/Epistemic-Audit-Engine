@@ -1,5 +1,5 @@
-"use client"
 import React, { useState, useEffect } from 'react'
+import { AnimatePresence } from 'framer-motion'
 import { EpistemicHighlight } from './EpistemicHighlight'
 import { ClaimInspector } from './ClaimInspector'
 
@@ -236,13 +236,16 @@ export function AuditedText({ sourceText, claims, mode = "DEMO", selectedClaimId
                 {claims.length > 0 ? renderText() : sourceText}
             </div>
 
-            {selectedClaimId && (
-                <ClaimInspector
-                    claim={activeClaim}
-                    onClose={() => onSelectClaim?.(null)}
-                    mode={mode}
-                />
-            )}
+            <AnimatePresence>
+                {selectedClaimId && (
+                    <ClaimInspector
+                        key="inspector-sidebar" // Key is important for AnimatePresence
+                        claim={activeClaim}
+                        onClose={() => onSelectClaim?.(null)}
+                        mode={mode}
+                    />
+                )}
+            </AnimatePresence>
 
             <EpistemicHoverCard
                 claim={hoveredClaim}

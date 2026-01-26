@@ -41,23 +41,29 @@ section {
     animation: shimmer 1.5s infinite alternate;
 }
 
-/* --- Premium Dark Atmosphere --- */
+/* --- Premium Dark Atmosphere (Enhanced) --- */
 .dark body::before {
     content: "";
     position: fixed;
     inset: 0;
     pointer-events: none;
-    z-index: -1;
-    opacity: 0.6;
-    /* Reduced from 1.0 */
+    z-index: -2;
+    opacity: 1;
 
+    /* Enhanced ambient glow - now visible */
     background:
-        radial-gradient(1200px 600px at 50% 0%,
-            rgba(255, 255, 255, 0.03),
+        /* Primary top glow */
+        radial-gradient(1200px 800px at 50% 0%,
+            rgba(16, 185, 129, 0.08),
             transparent 60%),
-        radial-gradient(800px 400px at 80% 20%,
-            rgba(16, 185, 129, 0.03),
-            transparent 60%);
+        /* Secondary accent glow */
+        radial-gradient(600px 600px at 80% 30%,
+            rgba(255, 255, 255, 0.04),
+            transparent 50%),
+        /* Tertiary depth glow */
+        radial-gradient(400px 400px at 20% 70%,
+            rgba(16, 185, 129, 0.04),
+            transparent 50%);
 }
 
 .dark body::after {
@@ -66,13 +72,30 @@ section {
     inset: 0;
     pointer-events: none;
     z-index: -1;
-    opacity: 0.015;
-    /* Reduced from 0.02 */
+    opacity: 0.03;
+    /* Noise texture - subtle but present */
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 .dark body {
     box-shadow: inset 0 0 200px rgba(0, 0, 0, 0.9);
+}
+
+/* Light mode atmosphere - subtle warmth */
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: -2;
+    background:
+        radial-gradient(1000px 600px at 50% 0%,
+            rgba(16, 185, 129, 0.03),
+            transparent 60%);
+}
+
+.dark body::before {
+    /* Override light mode for dark */
 }
 
 * {
@@ -104,3 +127,70 @@ section {
     scrollbar-width: none;
     /* Firefox */
 }
+
+/* --- Reduced Motion Support (Accessibility) --- */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* --- Surface Elevation Utilities --- */
+.surface-base {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.surface-elevated {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.surface-modal {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+/* --- Glow Border Utilities --- */
+.border-glow {
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.1), inset 0 0 20px rgba(16, 185, 129, 0.02);
+}
+
+.border-glow-strong {
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    box-shadow: 0 0 30px rgba(16, 185, 129, 0.2), inset 0 0 30px rgba(16, 185, 129, 0.05);
+}
+
+/* --- Theater Vignette (for showcase sections) --- */
+.theater-vignette {
+    box-shadow: inset 0 0 150px rgba(0, 0, 0, 0.5);
+}
+
+/* --- Breathing Animation (for inputs) --- */
+@keyframes breathing {
+    0%, 100% {
+        box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.1);
+    }
+    50% {
+        box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2), 0 0 20px rgba(16, 185, 129, 0.1);
+    }
+}
+
+.animate-breathing {
+    animation: breathing 3s ease-in-out infinite;
+}
+
+/* --- Stagger Delay Utilities --- */
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.2s; }
+.stagger-3 { animation-delay: 0.3s; }
+.stagger-4 { animation-delay: 0.4s; }
+.stagger-5 { animation-delay: 0.5s; }

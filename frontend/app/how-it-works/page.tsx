@@ -1,9 +1,36 @@
-import React from 'react'
+"use client"
+import React, { useEffect, useState } from 'react'
 import { ShieldCheck, Activity, AlertOctagon, BookOpen, AlertTriangle } from 'lucide-react'
 
+// Custom hook for scroll progress
+function useScrollProgress() {
+    const [progress, setProgress] = useState(0)
+
+    useEffect(() => {
+        const handleScroll = () => {
+            const totalHeight = document.documentElement.scrollHeight - window.innerHeight
+            const scrollPosition = window.scrollY
+            setProgress(totalHeight > 0 ? scrollPosition / totalHeight : 0)
+        }
+
+        window.addEventListener('scroll', handleScroll, { passive: true })
+        return () => window.removeEventListener('scroll', handleScroll)
+    }, [])
+
+    return progress
+}
+
 export default function InfoPage() {
+    const scrollProgress = useScrollProgress()
+
     return (
-        <div className="max-w-4xl mx-auto py-16 px-6 bg-noise min-h-screen font-sans">
+        <div className="max-w-4xl mx-auto py-16 px-6 bg-noise min-h-screen font-sans relative">
+
+            {/* Scroll Progress Indicator - CSS only */}
+            <div
+                className="fixed top-0 left-0 h-1 bg-gradient-to-r from-emerald-500 to-emerald-400 z-50 transition-transform duration-100"
+                style={{ width: `${scrollProgress * 100}%` }}
+            />
 
             {/* Dark Mode Safe Container */}
             <div className="
@@ -14,9 +41,10 @@ export default function InfoPage() {
                 border border-slate-200 dark:border-white/10
                 p-8 md:p-12
                 shadow-sm
+                animate-in fade-in slide-in-from-bottom-4 duration-700
             ">
 
-                {/* Header - Manual Style */}
+                {/* Header */}
                 <div className="mb-20 border-b border-slate-200 dark:border-white/10 pb-8">
                     <div className="text-xs font-mono font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">
                         Technical Documentation v1.1
@@ -72,7 +100,7 @@ export default function InfoPage() {
                                     <ul className="text-sm text-slate-600 dark:text-slate-300 space-y-2 list-disc list-inside">
                                         <li>Moral or ethical judgment</li>
                                         <li>Subjective literary critique</li>
-                                        <li>Binary "Truth" determination</li>
+                                        <li>Binary &quot;Truth&quot; determination</li>
                                         <li>Intent analysis</li>
                                     </ul>
                                 </div>
@@ -98,10 +126,10 @@ export default function InfoPage() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                                        <TableRow code="H1" type="Unsupported Assertion" def="Fact stated without evidence" ex="“X is proven to be Y”" />
-                                        <TableRow code="H2" type="False Precision" def="Fabricated specificity" ex="“97.32% effective”" />
-                                        <TableRow code="H3" type="Overconfidence" def="Certainty > Evidence" ex="“Definitely caused”" />
-                                        <TableRow code="H4" type="Illegitimate Inference" def="Unsupported causality" ex="“X caused Y”" />
+                                        <TableRow code="H1" type="Unsupported Assertion" def="Fact stated without evidence" ex="&quot;X is proven to be Y&quot;" />
+                                        <TableRow code="H2" type="False Precision" def="Fabricated specificity" ex="&quot;97.32% effective&quot;" />
+                                        <TableRow code="H3" type="Overconfidence" def="Certainty > Evidence" ex="&quot;Definitely caused&quot;" />
+                                        <TableRow code="H4" type="Illegitimate Inference" def="Unsupported causality" ex="&quot;X caused Y&quot;" />
                                         <TableRow code="H5" type="Cross-Claim Inconsistency" def="Internal contradiction" ex="Claims disagree" />
                                         <TableRow code="H6" type="Narrative Laundering" def="Opinion presented as fact" ex="Editorial tone" />
                                     </tbody>
@@ -117,11 +145,13 @@ export default function InfoPage() {
                                     The <strong>Epistemic Risk Score (0.0 - 1.0)</strong> is a composite metric derived from the weighted sum of
                                     hallucination penalties, normalized by document length.
                                 </p>
-                                <div className="my-6 p-6 bg-slate-900 dark:bg-neutral-800 text-slate-300 dark:text-slate-200 rounded-xl border border-slate-800 dark:border-white/10">
+                                <div className="my-6 p-6 bg-slate-900 dark:bg-neutral-800 text-slate-300 dark:text-slate-200 rounded-xl border border-slate-800 dark:border-white/10 relative overflow-hidden">
+                                    {/* Subtle glow accent */}
+                                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500/50 via-emerald-500/20 to-transparent" />
                                     <h4 className="text-white font-semibold mb-2 text-sm">The Humility Bonus</h4>
                                     <p className="text-sm leading-relaxed">
                                         The system rewards epistemic hygiene. If a text contains a claim that cannot be verified,
-                                        but the language used is appropriately tentative (e.g., "suggests," "likely," "sources indicate"),
+                                        but the language used is appropriately tentative (e.g., &quot;suggests,&quot; &quot;likely,&quot; &quot;sources indicate&quot;),
                                         the penalty is reduced by up to 50%. This incentivizes <strong>calibrated uncertainty</strong> over
                                         unsupported confidence.
                                     </p>
@@ -132,7 +162,7 @@ export default function InfoPage() {
                         {/* 6. Limits */}
                         <section id="limits">
                             <SectionHeader number="06" title="System Limits & Liability" />
-                            <div className="p-6 border-l-4 border-amber-400 bg-amber-50 dark:bg-amber-900/20">
+                            <div className="p-6 border-l-4 border-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-r-lg">
                                 <h3 className="font-bold text-amber-900 dark:text-amber-100 mb-2 flex items-center gap-2">
                                     <AlertOctagon className="w-5 h-5" /> Human-in-the-Loop Required
                                 </h3>

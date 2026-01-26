@@ -1,7 +1,14 @@
 "use client"
-import React from 'react'
-import { ArrowRight, Loader2 } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { ArrowRight, Loader2, Terminal } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { PREMIUM_EASE } from '@/lib/motion-variants'
+
+// --- TypeScript Fix ---
+const MotionDiv = motion.div as any
+const MotionSpan = motion.span as any
+const MotionButton = motion.button as any
+
 
 interface AuditInputProps {
     onAudit: (text: string) => void
@@ -13,6 +20,17 @@ const MAX_CHARS = 5000
 export function AuditInput({ onAudit, isLoading }: AuditInputProps) {
     const [text, setText] = React.useState("")
     const [isFocused, setIsFocused] = React.useState(false)
+    const [breathPhase, setBreathPhase] = useState(0)
+
+    // Breathing animation cycle
+    useEffect(() => {
+        if (!isFocused && !text.trim()) {
+            const interval = setInterval(() => {
+                setBreathPhase((prev) => (prev + 1) % 2)
+            }, 3000)
+            return () => clearInterval(interval)
+        }
+    }, [isFocused, text])
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
@@ -25,23 +43,52 @@ export function AuditInput({ onAudit, isLoading }: AuditInputProps) {
     const charRatio = charCount / MAX_CHARS
     const counterColor = charRatio > 0.9 ? "text-red-500" : charRatio > 0.7 ? "text-amber-500" : "text-slate-400"
 
+    // Determine glow state
+    const getGlowState = () => {
+        if (isFocused) {
+            return {
+                borderColor: 'rgba(16, 185, 129, 0.5)',
+                boxShadow: '0 0 0 1px rgba(16, 185, 129, 0.5), 0 0 30px rgba(16, 185, 129, 0.15), 0 10px 40px -10px rgba(0,0,0,0.5)'
+            }
+        }
+        if (!text.trim()) {
+            // Breathing state when empty and not focused
+            return {
+                borderColor: breathPhase === 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.2)',
+                boxShadow: breathPhase === 0
+                    ? '0 0 0 1px rgba(16, 185, 129, 0.1), 0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                    : '0 0 0 2px rgba(16, 185, 129, 0.15), 0 0 20px rgba(16, 185, 129, 0.08), 0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+            }
+        }
+        return {
+            borderColor: 'rgba(226, 232, 240, 0.1)',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+        }
+    }
+
     return (
         <form onSubmit={handleSubmit} className="w-full max-w-3xl mx-auto">
-            <motion.div
-                {...({
-                    initial: false,
-                    animate: {
-                        borderColor: isFocused
-                            ? 'rgba(16, 185, 129, 0.4)' // Emerald focus ring for terminal feel
-                            : 'rgba(226, 232, 240, 0.1)',
-                        boxShadow: isFocused
-                            ? '0 0 0 1px rgba(16, 185, 129, 0.4), 0 10px 40px -10px rgba(0,0,0,0.5)' // Glow
-                            : '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
-                    },
-                    // Glassmorphism card: Premium Dark Mode
-                    className: "relative bg-white dark:bg-white/[0.02] dark:backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-white/5 overflow-hidden transition-all duration-500 ease-out shadow-lg dark:shadow-none"
-                } as any)}
+            <MotionDiv
+                initial={false}
+                animate={getGlowState()}
+                transition={{ duration: 1.5, ease: PREMIUM_EASE }}
+                className="relative bg-white dark:bg-white/[0.02] dark:backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-white/5 overflow-hidden shadow-lg dark:shadow-none"
             >
+                {/* Terminal hint when empty */}
+                <AnimatePresence>
+                    {!text.trim() && !isFocused && (
+                        <MotionDiv
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute top-4 right-4 flex items-center gap-2 text-[10px] font-mono text-slate-400 dark:text-slate-600 uppercase tracking-widest z-10"
+                        >
+                            <Terminal className="w-3 h-3" />
+                            <span>Ready for input</span>
+                        </MotionDiv>
+                    )}
+                </AnimatePresence>
+
                 {/* Scrollable Input Area */}
                 <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
                     <textarea
@@ -60,7 +107,7 @@ export function AuditInput({ onAudit, isLoading }: AuditInputProps) {
                     <div className="flex items-center gap-2 pl-2">
                         <span className={`text-[11px] font-mono font-medium transition-colors duration-300 ${counterColor}`}>
                             <AnimatePresence mode="wait">
-                                <motion.span
+                                <MotionSpan
                                     key={charCount}
                                     initial={{ opacity: 0, y: 2 }}
                                     animate={{ opacity: 1, y: 0 }}
@@ -68,13 +115,13 @@ export function AuditInput({ onAudit, isLoading }: AuditInputProps) {
                                     transition={{ duration: 0.15 }}
                                 >
                                     {charCount.toLocaleString()}
-                                </motion.span>
+                                </MotionSpan>
                             </AnimatePresence>
                             <span className="opacity-40"> / {MAX_CHARS.toLocaleString()} characters</span>
                         </span>
                     </div>
 
-                    <motion.button
+                    <MotionButton
                         {...({
                             type: "submit",
                             disabled: !text.trim() || isLoading,
@@ -94,9 +141,9 @@ export function AuditInput({ onAudit, isLoading }: AuditInputProps) {
                                 <ArrowRight className="w-4 h-4 ml-2" />
                             </>
                         )}
-                    </motion.button>
+                    </MotionButton>
                 </div>
-            </motion.div>
+            </MotionDiv>
         </form >
     )
 }
