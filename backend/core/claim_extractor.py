@@ -2,6 +2,9 @@ import spacy
 import uuid
 import re
 from typing import List, Dict, Any, Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ClaimExtractor:
     def __init__(self):

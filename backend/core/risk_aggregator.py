@@ -1,5 +1,5 @@
 from typing import List, Dict, Any
-from hallucination_models import HallucinationFlag
+from .hallucination_models import HallucinationFlag
 
 class RiskAggregator:
     def __init__(self):

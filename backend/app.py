@@ -1,7 +1,16 @@
+import logging
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from backend.pipeline.run_full_audit import AuditPipeline
+from pipeline.run_full_audit import AuditPipeline
+
+# Configure Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger("epistemic_audit_engine")
 
 app = FastAPI(title="Epistemic Audit Engine API")
 
@@ -30,14 +39,18 @@ async def audit_text(request: AuditRequest):
     if not request.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty.")
     
+    if len(request.text) > 20000:
+        raise HTTPException(status_code=400, detail="Text too long (max 20,000 characters).")
+    
     try:
         if not pipeline:
             raise HTTPException(status_code=500, detail="Pipeline not initialized.")
             
+        logger.info(f"Received audit request for text length: {len(request.text)}")
         result = pipeline.run(request.text)
         return result
     except Exception as e:
-        print(f"Audit Error: {e}")
+        logger.error(f"Audit Error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")

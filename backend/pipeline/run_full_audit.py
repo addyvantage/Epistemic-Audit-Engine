@@ -4,21 +4,23 @@ import json
 import random
 import time
 from typing import Dict, Any, Optional, List
+import logging
 
-# Add root directory to path to import Phase 1-5 modules
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+# Configure logger
+logger = logging.getLogger(__name__)
 
-from claim_extractor import ClaimExtractor
-from entity_linker import EntityLinker
-from evidence_retriever import EvidenceRetriever
-from claim_verifier import ClaimVerifier
-from hallucination_detector import HallucinationDetector
-from risk_aggregator import RiskAggregator
-from entity_context import EntityContext
+# Core imports (Clean relative-to-root via 'core' package)
+from core.claim_extractor import ClaimExtractor
+from core.entity_linker import EntityLinker
+from core.evidence_retriever import EvidenceRetriever
+from core.claim_verifier import ClaimVerifier
+from core.hallucination_detector import HallucinationDetector
+from core.risk_aggregator import RiskAggregator
+from core.entity_context import EntityContext
 
 class AuditPipeline:
     def __init__(self, config_path: str = None):
-        print("Loading Pipeline Components...")
+        logger.info("Loading Pipeline Components...")
         
         # Load Config
         self.config = self._load_config(config_path)
@@ -49,7 +51,32 @@ class AuditPipeline:
         
         self.risk_aggregator = RiskAggregator()
         
-        print("Pipeline Ready.")
+        if self.config.get("reproducibility", {}).get("deterministic", True):
+            seed = self.config.get("reproducibility", {}).get("fixed_seed", 42)
+            self._seed_everything(seed)
+            
+        self.extractor = ClaimExtractor()
+        # Defensive assertion for API compatibility
+        assert (
+            hasattr(self.extractor, "extract")
+            or hasattr(self.extractor, "run")
+        ), "ClaimExtractor API mismatch: expected extract() or run()"
+        
+        self.linker = EntityLinker()
+        assert hasattr(self.linker, "link_claims"), "EntityLinker API mismatch: expected link_claims()"
+        
+        self.retriever = EvidenceRetriever()
+        assert hasattr(self.retriever, "retrieve_evidence"), "EvidenceRetriever API mismatch: expected retrieve_evidence()"
+        
+        self.verifier = ClaimVerifier()
+        assert hasattr(self.verifier, "verify_claims"), "ClaimVerifier API mismatch: expected verify_claims()"
+        
+        self.detector = HallucinationDetector()
+        assert hasattr(self.detector, "detect"), "HallucinationDetector API mismatch: expected detect()"
+        
+        self.risk_aggregator = RiskAggregator()
+        
+        logger.info("Pipeline Ready.")
 
     def _load_config(self, path: str = None) -> Dict[str, Any]:
         default_path = os.path.join(os.path.dirname(__file__), "../../config/reproducibility.json")
@@ -59,7 +86,7 @@ class AuditPipeline:
                 with open(target_path, 'r') as f:
                     return json.load(f)
             except Exception as e:
-                print(f"Warning: Failed to load config from {target_path}: {e}")
+                logger.warning(f"Warning: Failed to load config from {target_path}: {e}")
         return {"reproducibility": {"deterministic": True, "fixed_seed": 42}, "ablation": {}}
 
     def _seed_everything(self, seed: int):
@@ -76,7 +103,7 @@ class AuditPipeline:
         except ImportError:
             pass
         os.environ["PYTHONHASHSEED"] = str(seed)
-        print(f"Global seed set to {seed} (Deterministic Mode)")
+        logger.info(f"Global seed set to {seed} (Deterministic Mode)")
 
     def run(self, text: str, mode: str = "research", ablation_overrides: Dict[str, bool] = None) -> Dict[str, Any]:
         # Merge config
@@ -92,7 +119,7 @@ class AuditPipeline:
         }
 
         # Phase 1: Extraction
-        print(f"Phase 1: Extraction ({len(text)} chars)...")
+        logger.info(f"Phase 1: Extraction ({len(text)} chars)...")
         p1 = self.extractor.extract(text)
         p1["pipeline_config"] = pipeline_config
         p1["metadata"]["mode"] = mode
@@ -104,7 +131,7 @@ class AuditPipeline:
         self.linker.set_context(entity_context)
 
         # Phase 2: Linking with Entity Context
-        print("Phase 2: Linking...")
+        logger.info("Phase 2: Linking...")
 
         # Two-pass linking for coreference support:
         # Pass 1: Link claims to gather named entities
@@ -137,13 +164,13 @@ class AuditPipeline:
         self.linker.clear_context()
         
         # Phase 3: Evidence
-        print("Phase 3: Evidence...")
+        logger.info("Phase 3: Evidence...")
         
         # Pre-Filter (v1.2 Performance)
         claims_to_retrieve = []
         skipped_claims = []
         
-        print("Running Structural Pre-Filter...")
+        logger.info("Running Structural Pre-Filter...")
         for claim in p2.get("claims", []):
             structural_h = self.detector.detect_structural(claim)
             if structural_h:
@@ -158,7 +185,7 @@ class AuditPipeline:
             else:
                 claims_to_retrieve.append(claim)
                 
-        print(f"Pre-filtered {len(skipped_claims)} claims (Structural Hallucinations). Retrieving {len(claims_to_retrieve)} claims.")
+        logger.info(f"Pre-filtered {len(skipped_claims)} claims (Structural Hallucinations). Retrieving {len(claims_to_retrieve)} claims.")
         
         # Create temp input for retriever
         p2_filtered = {"claims": claims_to_retrieve, "metadata": p2.get("metadata", {}), "pipeline_config": pipeline_config}
@@ -170,14 +197,14 @@ class AuditPipeline:
         p3["pipeline_config"] = pipeline_config
         
         # Phase 4: Verification
-        print("Phase 4: Verification...")
+        logger.info("Phase 4: Verification...")
         p4 = self.verifier.verify_claims(p3)
         p4["pipeline_config"] = pipeline_config
         
         # Phase 5: Hallucination Detection (Merged into Phase 4)
         # claim_verifier now handles detection to inform verdicts.
         # We skip separate detection step.
-        print("Phase 5: Hallucinations (Merged)...")
+        logger.info("Phase 5: Hallucinations (Merged)...")
             
         final_claims = []
         disable_canonical = ablation_config.get("disable_canonical_override", False)

@@ -1,9 +1,9 @@
 from typing import Dict, Any, List
 import re
-from nli_engine import NLIEngine
-from backend.hallucination_detector import HallucinationDetector
-from alignment_scorer import AlignmentScorer
-from hallucination_attributor import HallucinationAttributor
+from .nli_engine import NLIEngine
+from .hallucination_detector import HallucinationDetector
+from .alignment_scorer import AlignmentScorer
+from .hallucination_attributor import HallucinationAttributor
 
 class ClaimVerifier:
     def __init__(self):

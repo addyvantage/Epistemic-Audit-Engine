@@ -1,10 +1,10 @@
 import requests
 import time
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
-from entity_models import ResolvedEntity, EntityCandidate
+from .entity_models import ResolvedEntity, EntityCandidate
 
 if TYPE_CHECKING:
-    from entity_context import EntityContext
+    from .entity_context import EntityContext
 
 class EntityLinker:
     def __init__(self):

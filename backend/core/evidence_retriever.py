@@ -2,12 +2,16 @@ import requests
 import time
 import uuid
 import spacy
-from typing import List, Dict, Any, Optional
-from property_mapper import PropertyMapper
-from backend.wikipedia_passage_retrieval import WikipediaPassageRetriever
-from grokipedia_client import GrokipediaClient
-from backend.primary_document_retriever import PrimaryDocumentRetriever
-from backend.wikidata_retriever import WikidataRetriever
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .entity_context import EntityContext
+
+from .property_mapper import PropertyMapper
+from .wikipedia_passage_retrieval import WikipediaPassageRetriever
+from .grokipedia_client import GrokipediaClient
+from .primary_document_retriever import PrimaryDocumentRetriever
+from .wikidata_retriever import WikidataRetriever
 from config.core_config import EVIDENCE_MODALITY_TEXTUAL, EVIDENCE_MODALITY_STRUCTURED
 
 class EvidenceRetriever:
