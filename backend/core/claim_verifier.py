@@ -371,16 +371,24 @@ class ClaimVerifier:
         # If verdict is SUPPORTED, ensure no hallucinations remain.
         if final_verdict == "SUPPORTED" and hallucinations:
              hallucinations = [] # Force clear
-             
+
+        # Evidence Sufficiency Classification (v1.5)
+        # Computes explicit categorization for frontend messaging
+        evidence_sufficiency = self._classify_evidence_sufficiency(evidence, supporting_ids)
+        evidence_summary = self._build_evidence_summary(evidence, supporting_ids)
+
         claim["hallucinations"] = hallucinations
         claim["verification"] = {
             "verdict": final_verdict,
             "confidence": round(confidence, 2),
             "used_evidence_ids": supporting_ids,
             "contradicted_by": refuting_ids,
-            "reasoning": reasoning
+            "reasoning": reasoning,
+            # Evidence Sufficiency (v1.5) - Enables accurate frontend messaging
+            "evidence_sufficiency": evidence_sufficiency,
+            "evidence_summary": evidence_summary
         }
-        
+
         return claim
         
     def _temporal_compatible(self, claim_val: str, ev_val: str) -> bool:
@@ -401,18 +409,156 @@ class ClaimVerifier:
         """
         align = item.get("alignment", {})
         c_type = claim.get("claim_type")
-        
+
         s_match = align.get("subject_match")
         p_match = align.get("predicate_match")
         o_match = align.get("object_match")
         t_match = align.get("temporal_match")
-        
+
         # Base Requirement: S + P
         if not (s_match and p_match):
             return False
-            
+
         if c_type == "TEMPORAL":
             # Must have temporal match (True or False, NOT None)
             if t_match is None: return False
-            
+
         return True
+
+    def _classify_evidence_sufficiency(
+        self,
+        evidence: Dict[str, Any],
+        used_evidence_ids: List[str]
+    ) -> str:
+        """
+        Classify overall evidence sufficiency for frontend messaging (v1.5).
+
+        Distinguishes:
+        - ES_VERIFIED: Structured evidence directly supports claim
+        - ES_CORROBORATED: Textual evidence contributes to verdict
+        - ES_EVALUATED: Evidence found but insufficient for verdict
+        - ES_ABSENT: No evidence retrieved
+
+        Args:
+            evidence: Dict with wikidata, wikipedia, primary_document lists
+            used_evidence_ids: List of evidence IDs that contributed to verdict
+
+        Returns:
+            One of: ES_VERIFIED, ES_CORROBORATED, ES_EVALUATED, ES_ABSENT
+        """
+        from config.core_config import (
+            EVIDENCE_SUFFICIENCY_VERIFIED,
+            EVIDENCE_SUFFICIENCY_CORROBORATED,
+            EVIDENCE_SUFFICIENCY_EVALUATED,
+            EVIDENCE_SUFFICIENCY_ABSENT
+        )
+
+        # Check for any retrieved evidence
+        wikidata_items = evidence.get("wikidata", [])
+        wikipedia_items = evidence.get("wikipedia", [])
+        primary_items = evidence.get("primary_document", [])
+
+        has_any_evidence = bool(wikidata_items or wikipedia_items or primary_items)
+
+        if not has_any_evidence:
+            return EVIDENCE_SUFFICIENCY_ABSENT
+
+        # Check if structured evidence was used (highest authority)
+        used_ids_set = set(used_evidence_ids)
+
+        for ev in primary_items:
+            if ev.get("evidence_id") in used_ids_set:
+                return EVIDENCE_SUFFICIENCY_VERIFIED
+
+        for ev in wikidata_items:
+            if ev.get("evidence_id") in used_ids_set:
+                return EVIDENCE_SUFFICIENCY_VERIFIED
+
+        # Check if textual evidence was used
+        for ev in wikipedia_items:
+            if ev.get("evidence_id") in used_ids_set:
+                return EVIDENCE_SUFFICIENCY_CORROBORATED
+
+        # Evidence was retrieved but not sufficient for verdict
+        return EVIDENCE_SUFFICIENCY_EVALUATED
+
+    def _build_evidence_summary(
+        self,
+        evidence: Dict[str, Any],
+        used_evidence_ids: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Build a summary of evidence for frontend display (v1.5).
+
+        Returns structured counts and used evidence items for each source type,
+        enabling the frontend to display appropriate messaging and evidence chips.
+
+        Args:
+            evidence: Dict with wikidata, wikipedia, primary_document lists
+            used_evidence_ids: List of evidence IDs that contributed to verdict
+
+        Returns:
+            Dict with total/used counts and used_items for each source type
+        """
+        used_ids_set = set(used_evidence_ids)
+
+        summary = {
+            "wikidata": {
+                "total": 0,
+                "used": 0,
+                "used_items": []
+            },
+            "wikipedia": {
+                "total": 0,
+                "used": 0,
+                "used_items": []
+            },
+            "primary_document": {
+                "total": 0,
+                "used": 0,
+                "used_items": []
+            }
+        }
+
+        # Process Wikidata evidence
+        for ev in evidence.get("wikidata", []):
+            summary["wikidata"]["total"] += 1
+            if ev.get("evidence_id") in used_ids_set:
+                summary["wikidata"]["used"] += 1
+                summary["wikidata"]["used_items"].append({
+                    "evidence_id": ev.get("evidence_id"),
+                    "source": "WIKIDATA",
+                    "property": ev.get("property", ""),
+                    "value": str(ev.get("value", "")),
+                    "snippet": (ev.get("snippet", "") or "")[:150],
+                    "url": ev.get("url", "")
+                })
+
+        # Process Wikipedia evidence
+        for ev in evidence.get("wikipedia", []):
+            summary["wikipedia"]["total"] += 1
+            if ev.get("evidence_id") in used_ids_set:
+                summary["wikipedia"]["used"] += 1
+                snippet = ev.get("snippet", "") or ev.get("sentence", "") or ""
+                summary["wikipedia"]["used_items"].append({
+                    "evidence_id": ev.get("evidence_id"),
+                    "source": "WIKIPEDIA",
+                    "snippet": snippet[:150],
+                    "url": ev.get("url", "")
+                })
+
+        # Process Primary Document evidence
+        for ev in evidence.get("primary_document", []):
+            summary["primary_document"]["total"] += 1
+            if ev.get("evidence_id") in used_ids_set:
+                summary["primary_document"]["used"] += 1
+                summary["primary_document"]["used_items"].append({
+                    "evidence_id": ev.get("evidence_id"),
+                    "source": "PRIMARY_DOCUMENT",
+                    "authority": ev.get("authority", "SEC"),
+                    "document_type": ev.get("document_type", "Filing"),
+                    "filing_year": ev.get("filing_year", ""),
+                    "snippet": (ev.get("snippet", "") or ev.get("value", "") or "")[:150]
+                })
+
+        return summary

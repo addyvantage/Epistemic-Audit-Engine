@@ -31,9 +31,43 @@ export function EpistemicHoverCard({ claim, position, visible, explainabilityMod
     // Casual transformation
     const reasoning = isExpert ? rawReasoning : rawReasoning.replace(/epistemic|polarity|predicate/gi, "claim logic")
 
-    // Evidence
-    const sources = claim.verification?.evidence || []
-    const hasSources = sources.length > 0
+    // Evidence Sufficiency (v1.5) - explicit categorization for accurate messaging
+    const evidenceSufficiency = claim.verification?.evidence_sufficiency || "ES_ABSENT"
+    const evidenceSummary = claim.verification?.evidence_summary || {}
+
+    // Compute if we have used evidence to display as chips
+    const usedWikidata = evidenceSummary.wikidata?.used_items || []
+    const usedWikipedia = evidenceSummary.wikipedia?.used_items || []
+    const usedPrimary = evidenceSummary.primary_document?.used_items || []
+    const hasUsedEvidence = usedWikidata.length > 0 || usedWikipedia.length > 0 || usedPrimary.length > 0
+
+    // Track if evidence was retrieved (even if not used)
+    const totalRetrieved = (evidenceSummary.wikidata?.total || 0) +
+        (evidenceSummary.wikipedia?.total || 0) +
+        (evidenceSummary.primary_document?.total || 0)
+
+    // Evidence message based on sufficiency category
+    const getEvidenceMessage = () => {
+        switch (evidenceSufficiency) {
+            case "ES_VERIFIED":
+                return isExpert
+                    ? "Verified via structured knowledge graph alignment."
+                    : "Verified using authoritative records."
+            case "ES_CORROBORATED":
+                return isExpert
+                    ? "Corroborated by textual evidence (NLI entailment)."
+                    : "Supported by textual sources."
+            case "ES_EVALUATED":
+                return isExpert
+                    ? "Evidence retrieved but insufficient for verification."
+                    : "Evidence found but not conclusive."
+            case "ES_ABSENT":
+            default:
+                return isExpert
+                    ? "No relevant evidence retrieved from knowledge sources."
+                    : "No matching records found."
+        }
+    }
 
     // --- STYLING LOGIC (v1.6.2 Final Consistency) ---
     let bgClass = "bg-amber-50/90 dark:bg-neutral-900/95 border-amber-300 dark:border-white/10 shadow-xl"
@@ -166,26 +200,47 @@ export function EpistemicHoverCard({ claim, position, visible, explainabilityMod
                             <MotionDiv variants={itemVariants}>
                                 <h4 className="text-[10px] uppercase font-bold tracking-[0.15em] mb-2 text-slate-500 dark:text-neutral-400 opacity-100">Evidence Snapshot</h4>
 
-                                {hasSources ? (
+                                {hasUsedEvidence ? (
                                     <div className="flex flex-wrap gap-2">
-                                        {sources.slice(0, 3).map((s: any, idx: number) => (
-                                            <CitationChip key={idx} source={s} tintClass={citationTint} />
+                                        {/* Show primary documents first (highest authority) */}
+                                        {usedPrimary.slice(0, 2).map((s: any, idx: number) => (
+                                            <CitationChip key={`pd-${idx}`} source={{...s, source: s.authority || "PRIMARY"}} tintClass={citationTint} />
                                         ))}
-                                        {sources.length > 3 && (
-                                            <span className="text-[9px] opacity-30 font-bold self-center tracking-tighter text-slate-500 dark:text-neutral-400">+ {sources.length - 3} MORE</span>
-                                        )}
+                                        {/* Then Wikidata */}
+                                        {usedWikidata.slice(0, 2).map((s: any, idx: number) => (
+                                            <CitationChip key={`wd-${idx}`} source={{...s, source: "Wikidata"}} tintClass={citationTint} />
+                                        ))}
+                                        {/* Then Wikipedia */}
+                                        {usedWikipedia.slice(0, 2).map((s: any, idx: number) => (
+                                            <CitationChip key={`wp-${idx}`} source={{...s, source: "Wikipedia"}} tintClass={citationTint} />
+                                        ))}
+                                        {/* Show count for additional sources */}
+                                        {(() => {
+                                            const totalUsed = usedPrimary.length + usedWikidata.length + usedWikipedia.length
+                                            const shown = Math.min(2, usedPrimary.length) + Math.min(2, usedWikidata.length) + Math.min(2, usedWikipedia.length)
+                                            if (totalUsed > shown) {
+                                                return <span className="text-[9px] opacity-30 font-bold self-center tracking-tighter text-slate-500 dark:text-neutral-400">+ {totalUsed - shown} MORE</span>
+                                            }
+                                            return null
+                                        })()}
                                     </div>
                                 ) : (
                                     <div className={`p-4 rounded-xl border border-dashed backdrop-blur-xl shadow-sm transition-colors duration-300
-                                        ${isSupported
-                                            ? "bg-emerald-50/70 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-500/30"
-                                            : "bg-slate-100/70 dark:bg-neutral-900/30 border-slate-300 dark:border-white/10"
+                                        ${evidenceSufficiency === "ES_EVALUATED"
+                                            ? "bg-amber-50/50 dark:bg-amber-900/10 border-amber-300 dark:border-amber-500/30"
+                                            : isSupported
+                                                ? "bg-emerald-50/70 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-500/30"
+                                                : "bg-slate-100/70 dark:bg-neutral-900/30 border-slate-300 dark:border-white/10"
                                         }`}>
                                         <p className="text-[13px] font-medium leading-relaxed text-center text-slate-600 dark:text-neutral-400">
-                                            {isSupported
-                                                ? (isExpert ? "Verified via structured knowledge graph." : "Verified using authoritative records.")
-                                                : "No authoritative source could be confidently linked."}
+                                            {getEvidenceMessage()}
                                         </p>
+                                        {/* Show retrieved count when evidence exists but wasn't sufficient */}
+                                        {evidenceSufficiency === "ES_EVALUATED" && totalRetrieved > 0 && (
+                                            <p className="text-[10px] mt-2 text-center text-amber-600 dark:text-amber-400 opacity-70">
+                                                {evidenceSummary.wikipedia?.total || 0} passages reviewed, {evidenceSummary.wikidata?.total || 0} structured records checked
+                                            </p>
+                                        )}
                                     </div>
                                 )}
                             </MotionDiv>

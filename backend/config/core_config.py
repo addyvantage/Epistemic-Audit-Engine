@@ -31,6 +31,13 @@ VERDICT_INSUFFICIENT = "INSUFFICIENT_EVIDENCE"
 EVIDENCE_MODALITY_TEXTUAL = "TEXTUAL"
 EVIDENCE_MODALITY_STRUCTURED = "STRUCTURED"
 
+# --- Evidence Sufficiency Classification (v1.5) ---
+# Distinguishes why evidence was/wasn't used for verdict assignment
+EVIDENCE_SUFFICIENCY_VERIFIED = "ES_VERIFIED"          # Structured evidence directly confirms claim
+EVIDENCE_SUFFICIENCY_CORROBORATED = "ES_CORROBORATED"  # Textual evidence provides NLI entailment
+EVIDENCE_SUFFICIENCY_EVALUATED = "ES_EVALUATED"        # Evidence retrieved but didn't meet thresholds
+EVIDENCE_SUFFICIENCY_ABSENT = "ES_ABSENT"              # No relevant evidence retrieved
+
 # --- Confidence Caps ---
 CONFIDENCE_CAP_STRUCTURED = 0.85
 CONFIDENCE_CAP_PRIMARY = 0.95

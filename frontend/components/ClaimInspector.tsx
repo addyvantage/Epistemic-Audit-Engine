@@ -84,11 +84,23 @@ export function ClaimInspector({ claim, onClose, mode = "DEMO" }: Props) {
 
     const hasEvidence = primaryDocs.length > 0 || structuredSources.length > 0 || narrativeSources.length > 0
 
-    // TEMPLATED REASONING
+    // Evidence Sufficiency (v1.5) - for accurate messaging
+    const evidenceSufficiency = claim.verification?.evidence_sufficiency || "ES_ABSENT"
+
+    // TEMPLATED REASONING - Updated for evidence sufficiency awareness
     const reasoning = {
-        SUPPORTED: `This claim is supported because it aligns with authoritative records${primaryDocs.length > 0 ? ' from primary documents' : ''}.`,
+        SUPPORTED: primaryDocs.length > 0
+            ? "This claim is supported by primary documents with high confidence."
+            : evidenceSufficiency === "ES_VERIFIED"
+                ? "This claim is verified via structured knowledge graph alignment."
+                : "This claim is corroborated by textual evidence.",
         REFUTED: `This claim is refuted because it contradicts authoritative records${primaryDocs.length > 0 ? ' from primary documents' : ''}.`,
-        INSUFFICIENT_EVIDENCE: "This claim is marked as uncertain because no matching records were found in the connected knowledge bases."
+        INSUFFICIENT_EVIDENCE: evidenceSufficiency === "ES_EVALUATED"
+            ? "Evidence was retrieved but did not meet verification thresholds."
+            : "No matching records were found in the connected knowledge bases.",
+        UNCERTAIN: evidenceSufficiency === "ES_EVALUATED"
+            ? "Evidence suggests partial support but lacks sufficient corroboration."
+            : "Unable to reach a conclusive verdict with available evidence."
     }[verdict as string] || "Evidence analysis inconclusive."
 
     return (
@@ -168,8 +180,14 @@ export function ClaimInspector({ claim, onClose, mode = "DEMO" }: Props) {
                     </h3>
 
                     {!hasEvidence && (
-                        <div className="text-sm text-slate-400 dark:text-neutral-500 italic bg-slate-50 dark:bg-neutral-900/40 p-4 rounded-lg text-center border border-slate-100 dark:border-white/10 cursor-default">
-                            No authoritative records linked.
+                        <div className={`text-sm italic p-4 rounded-lg text-center border cursor-default ${
+                            evidenceSufficiency === "ES_EVALUATED"
+                                ? "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-500/30"
+                                : "text-slate-400 dark:text-neutral-500 bg-slate-50 dark:bg-neutral-900/40 border-slate-100 dark:border-white/10"
+                        }`}>
+                            {evidenceSufficiency === "ES_EVALUATED"
+                                ? "Evidence retrieved but insufficient for verification."
+                                : "No authoritative records linked."}
                         </div>
                     )}
 
