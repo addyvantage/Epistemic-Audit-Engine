@@ -94,9 +94,7 @@ body::before {
             transparent 60%);
 }
 
-.dark body::before {
-    /* Override light mode for dark */
-}
+
 
 * {
     transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
@@ -130,6 +128,7 @@ body::before {
 
 /* --- Reduced Motion Support (Accessibility) --- */
 @media (prefers-reduced-motion: reduce) {
+
     *,
     *::before,
     *::after {
@@ -176,9 +175,12 @@ body::before {
 
 /* --- Breathing Animation (for inputs) --- */
 @keyframes breathing {
-    0%, 100% {
+
+    0%,
+    100% {
         box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.1);
     }
+
     50% {
         box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2), 0 0 20px rgba(16, 185, 129, 0.1);
     }
@@ -189,8 +191,22 @@ body::before {
 }
 
 /* --- Stagger Delay Utilities --- */
-.stagger-1 { animation-delay: 0.1s; }
-.stagger-2 { animation-delay: 0.2s; }
-.stagger-3 { animation-delay: 0.3s; }
-.stagger-4 { animation-delay: 0.4s; }
-.stagger-5 { animation-delay: 0.5s; }
+.stagger-1 {
+    animation-delay: 0.1s;
+}
+
+.stagger-2 {
+    animation-delay: 0.2s;
+}
+
+.stagger-3 {
+    animation-delay: 0.3s;
+}
+
+.stagger-4 {
+    animation-delay: 0.4s;
+}
+
+.stagger-5 {
+    animation-delay: 0.5s;
+}
