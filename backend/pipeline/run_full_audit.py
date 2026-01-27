@@ -275,11 +275,14 @@ class AuditPipeline:
             
             # 1. Evidence Consistency
             # Narrowed Guard (Fix Epistemic Violation)
-            # It is illegal to Refute a claim that has Support UNLESS a Critical Hallucination exists.
+            # It is illegal to Refute a claim that has Support UNLESS:
+            # - A Critical Hallucination exists, OR
+            # - There is also contradicting evidence (refutation takes precedence)
             has_critical = any(h.get("severity") == "CRITICAL" for h in c.get("hallucinations", []))
-            
-            if verdict == "REFUTED" and has_support and not has_critical:
-                 # This is the forbidden state: Refuted despite support, and no critical override.
+            has_contradiction = len(v.get("contradicted_by", [])) > 0
+
+            if verdict == "REFUTED" and has_support and not has_critical and not has_contradiction:
+                 # This is the forbidden state: Refuted despite support, and no critical override or contradiction.
                  raise RuntimeError(f"Epistemic violation: Refuted despite authoritative support without Critical Hallucination. Claim ID: {c.get('claim_id')}")
                 
             if verdict == "SUPPORTED" and not has_support and not is_canonical:

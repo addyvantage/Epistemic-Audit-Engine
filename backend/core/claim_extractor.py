@@ -281,7 +281,13 @@ class ClaimExtractor:
             temporal_claim = self._create_temporal_claim(subj, verb, obj, sent, claim_id, sent_obj["sentence_id"], sent_obj["text"])
             if temporal_claim:
                  claims.append(temporal_claim)
-            
+
+            # v1.6: Compound Claim Decomposition - Location Claims
+            # For "born in YEAR in PLACE" patterns, also extract the location claim
+            location_claim = self._create_location_claim(subj, verb, obj, sent, claim_id, sent_obj["sentence_id"], sent_obj["text"])
+            if location_claim:
+                 claims.append(location_claim)
+
         return claims
 
     def _is_contested(self, subj_text: str, verb_lemma: str) -> bool:
@@ -466,7 +472,84 @@ class ClaimExtractor:
                 "sentence_index": sent_id
             }
         }
-    
+
+    def _create_location_claim(self, subj, verb, obj, sent, parent_claim_id, sent_id, raw_sent) -> Optional[Dict[str, Any]]:
+        """
+        v1.6: Extracts a derived location claim from compound biographical statements.
+        For "born in 1643 in England", this extracts "born in England".
+        """
+        # Only process biographical predicates that can have location components
+        verb_lemma = verb.lemma_.lower()
+        if verb_lemma not in ["bear", "die", "live", "reside", "base"]:
+            return None
+
+        target_location = None
+        location_prep = None
+
+        # Look for location prepositional phrases attached to verb
+        # Need to find a prep phrase that contains a GPE/LOC entity, not a DATE
+        for child in verb.children:
+            if child.dep_ == "prep" and child.text.lower() == "in":
+                for grand in child.children:
+                    if grand.dep_ == "pobj":
+                        # Check if this is a location, not a date
+                        if grand.ent_type_ in ("GPE", "LOC", "FAC", "ORG"):
+                            target_location = self._get_full_subtree_text(child)  # "in England"
+                            location_prep = child
+                            break
+                        # Also check by content - if it doesn't look like a year/date
+                        elif grand.ent_type_ not in ("DATE", "TIME", "CARDINAL"):
+                            text = grand.text
+                            # Heuristic: if it's not a 4-digit number, might be a location
+                            if not re.match(r'^\d{4}$', text):
+                                # Check if any child is a GPE/LOC
+                                has_date_child = any(t.ent_type_ == "DATE" for t in grand.subtree)
+                                if not has_date_child:
+                                    target_location = self._get_full_subtree_text(child)
+                                    location_prep = child
+                                    break
+
+        if not target_location:
+            return None
+
+        # Determine Subject
+        new_subj_text = self._get_full_subtree_text(subj)
+
+        # Determine Predicate (passive form for "born")
+        verb_phrase = self._get_verb_phrase(verb)
+        is_passive = any(c.dep_ == "auxpass" for c in verb.children)
+        if verb_lemma == "bear" and not is_passive:
+            verb_phrase = "was born"
+
+        claim_str = f"{new_subj_text} {verb_phrase} {target_location}".strip()
+
+        id_str = f"{sent_id}_{claim_str}_location_derived"
+        claim_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, id_str))
+
+        return {
+            "claim_id": claim_id,
+            "sentence_id": sent_id,
+            "claim_text": claim_str,
+            "subject": new_subj_text,
+            "predicate": verb_phrase,
+            "object": target_location.replace("in ", "").strip(),  # "England" not "in England"
+            "confidence_linguistic": {"hedging": 0.0, "absolutism": 0.0, "temporal_specificity": 0.0, "modal_strength": 1.0},
+            "claim_type": "RELATION",  # Location claims are RELATION type
+            "epistemic_status": "ASSERTED",
+            "raw_sentence": raw_sent,
+            "is_derived": True,
+            "source_claim_id": parent_claim_id,
+            "highlight_type": "IMPLICIT_FACT",
+            "start_char": sent.start_char,
+            "end_char": sent.end_char,
+            "sentence_index": sent_id,
+            "span": {
+                "start": sent.start_char,
+                "end": sent.end_char,
+                "sentence_index": sent_id
+            }
+        }
+
     def _get_subtree_text(self, token) -> str:
         """Helper to get the full text of a token's subtree (e.g. 'Steve Jobs' from 'Steve')"""
         return "".join([t.text_with_ws for t in token.subtree]).strip()

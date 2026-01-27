@@ -213,11 +213,30 @@ class HallucinationDetector:
         Now supports Semantic Numeric Intents: LOWER_BOUND, UPPER_BOUND, APPROXIMATE.
         """
         c_text = claim.get("claim_text", "").lower()
-        
+
+        # v1.6: Skip specificity check for canonical biographical claims
+        # Birth dates/places are verified through structured evidence, not number matching
+        claim_type = claim.get("claim_type", "")
+        predicate = claim.get("predicate", "").lower()
+        CANONICAL_BIOGRAPHICAL_PREDICATES = {"born", "died", "birth", "death", "founded", "established"}
+        if any(p in predicate for p in CANONICAL_BIOGRAPHICAL_PREDICATES):
+            return None
+
         # 1. Regex for numbers (simple integers/floats/formatted)
-        # Avoid years (19XX, 20XX) heuristic handled later
+        # Filter out years: any 4-digit number between 1000-2099 (covers historical dates)
         nums = re.findall(r'\b\d+(?:,\d{3})*(?:\.\d+)?\b', c_text)
-        non_year_nums = [n for n in nums if not (len(n) == 4 and (n.startswith("19") or n.startswith("20")))]
+
+        def is_likely_year(n: str) -> bool:
+            """Check if a 4-digit number is likely a year (1000-2099)."""
+            if len(n) != 4:
+                return False
+            try:
+                year = int(n)
+                return 1000 <= year <= 2099
+            except ValueError:
+                return False
+
+        non_year_nums = [n for n in nums if not is_likely_year(n)]
         
         if not non_year_nums:
             return None

@@ -12,7 +12,8 @@ class ClaimVerifier:
         self.alignment_scorer = AlignmentScorer()
         self.attributor = HallucinationAttributor()
         
-        # v1.3.1 Canonical Restoration
+        # v1.3.1 Canonical Restoration (Extended v1.6)
+        # Temporal predicates -> date properties
         self.CANONICAL_PRED_MAP = {
             "founded": "P571", # inception
             "born": "P569", # date of birth
@@ -21,6 +22,29 @@ class ClaimVerifier:
             "established": "P571",
             "incepted": "P571",
             "created": "P571" # sometimes
+        }
+
+        # v1.6: Canonical biographical properties that should use relaxed matching
+        # These properties represent core identity facts that are well-established
+        self.CANONICAL_BIOGRAPHICAL_PROPS = {
+            "P569",  # date of birth
+            "P570",  # date of death
+            "P19",   # place of birth
+            "P20",   # place of death
+            "P27",   # country of citizenship / nationality
+            "P571",  # inception (for organizations)
+            "P159",  # headquarters location
+        }
+
+        # v1.6: Location predicates -> place properties
+        self.CANONICAL_LOCATION_PRED_MAP = {
+            "born in": "P19",      # place of birth
+            "died in": "P20",      # place of death
+            "from": "P27",         # nationality / citizenship
+            "citizen of": "P27",
+            "nationality": "P27",
+            "headquartered": "P159",
+            "based in": "P159",
         }
 
     def verify_claims(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -111,7 +135,7 @@ class ClaimVerifier:
                  # But let's collect for transparency, but score is locked.
                  continue
 
-            # A. Wikidata Logic (Structured) - Enhanced v1.4
+            # A. Wikidata Logic (Structured) - Enhanced v1.4, v1.6
             # Structured Evidence Independence: Wikidata evidence can independently
             # yield SUPPORTED when alignment metadata confirms the match.
             if source == "WIKIDATA":
@@ -120,15 +144,26 @@ class ClaimVerifier:
                 p_match = alignment.get("predicate_match", False)
                 o_match = alignment.get("object_match")
                 t_match = alignment.get("temporal_match")
+                prop_id = ev.get("property", "")
 
-                # Check for contradiction - but be conservative
-                # Only mark as refutation for clear temporal mismatches
+                # v1.6: Canonical Biographical Property Override
+                # For core identity facts (birth date, birth place, death date, nationality),
+                # if subject matches and we have the right property, this is authoritative.
+                is_canonical_biographical = prop_id in self.CANONICAL_BIOGRAPHICAL_PROPS
+
+                # v1.6: Skip contradiction marking for canonical biographical properties
+                # when the same property has multiple values (e.g., Newton's birth date
+                # has both 1642 Julian and 1643 Gregorian). We only mark as refutation
+                # if there's no matching value at all.
                 is_refutation = False
 
                 # Temporal contradiction: claim says year X, evidence says year Y
-                # This is the most reliable type of structured contradiction
-                if t_match is False:
+                # Only mark as refutation if:
+                # 1. It's NOT a canonical biographical property, OR
+                # 2. It's canonical but we'll check later if ANY value matches
+                if t_match is False and not is_canonical_biographical:
                     c_val = claim.get("object", "")
+                    # v1.6: Use relaxed temporal compatibility for year-level claims
                     if not self._temporal_compatible(c_val, val):
                         is_refutation = True
                         refuting_ids.append(ev.get("evidence_id"))
@@ -145,6 +180,20 @@ class ClaimVerifier:
                     has_contradiction = True
                     if best_refute_score < 0.9:
                         best_refute_score = 0.9
+
+                # v1.6: Canonical Biographical Override
+                # For canonical biographical properties, subject + predicate match is sufficient
+                # for SUPPORTED verdict. The property's existence confirms the fact.
+                elif s_match and p_match and is_canonical_biographical:
+                    # For canonical facts, we trust the Wikidata property even without
+                    # strict object/temporal alignment. The property value IS the truth.
+                    supporting_ids.append(ev.get("evidence_id"))
+                    has_direct_support = True
+                    from config.core_config import CONFIDENCE_CAP_STRUCTURED
+                    if CONFIDENCE_CAP_STRUCTURED > best_support_score:
+                        best_support_score = CONFIDENCE_CAP_STRUCTURED
+                        best_evidence_item = ev
+                        best_evidence_item["support_type"] = "CANONICAL_BIOGRAPHICAL"
 
                 # Structured Evidence Independence Rule (v1.4):
                 # If subject AND predicate match, and we have positive object/temporal match,
@@ -226,22 +275,30 @@ class ClaimVerifier:
                     weak_support_count += 1
                     weak_support_total_score += score
 
-        # v1.3.1 KG FALLBACK VERIFICATION (Rule C1/C2)
+        # v1.3.1 KG FALLBACK VERIFICATION (Rule C1/C2) - Extended v1.6
         # If no narrative evidence and no direct support yet, check Wikidata Canonical Properties explicitly.
         if not has_direct_support and not has_contradiction:
             claim_pred = claim.get("predicate", "").lower()
+            claim_text = claim.get("claim_text", "").lower()
             target_prop = None
-            
-            # 1. Match Canonical Predicate
+
+            # 1. Match Canonical Temporal Predicate
             for key, pid in self.CANONICAL_PRED_MAP.items():
                 if key in claim_pred:
                     target_prop = pid
                     break
-            
+
+            # v1.6: Also check location predicates (birth place, nationality)
+            if not target_prop:
+                for key, pid in self.CANONICAL_LOCATION_PRED_MAP.items():
+                    if key in claim_pred or key in claim_text:
+                        target_prop = pid
+                        break
+
             # 2. Asserted & Resolved Check
             is_asserted = claim.get("epistemic_status", "ASSERTED") == "ASSERTED"
             is_resolved = claim.get("subject_entity", {}).get("resolution_status") in ["RESOLVED", "RESOLVED_SOFT", "RESOLVED_COREF"]
-            
+
             if target_prop and is_asserted and is_resolved:
                 # 3. Scan Wikidata Evidence for Property Match
                 # Even if alignment failed previously, if we find the property, we trust it for Canonical facts.
@@ -392,16 +449,37 @@ class ClaimVerifier:
         return claim
         
     def _temporal_compatible(self, claim_val: str, ev_val: str) -> bool:
-        if not ev_val or not ev_val.startswith("+"):
+        """
+        Check if claim's temporal value is compatible with evidence value.
+
+        v1.6: Relaxed temporal granularity matching.
+        - Year-level claims (e.g., "1643") match full dates (e.g., "1643-01-04")
+        - Exact day matching is NOT required unless claim specifies a day
+        - Handles both ISO format (+1643-01-04) and plain year strings (1643)
+        """
+        if not ev_val:
             return False
-            
-        # Extract 4 digit year from claim
-        years = re.findall(r'\d{4}', claim_val)
-        if not years:
+
+        # Extract years from both claim and evidence
+        claim_years = re.findall(r'\b(\d{4})\b', str(claim_val))
+        ev_years = re.findall(r'\b(\d{4})\b', str(ev_val))
+
+        if not claim_years:
             return False
-            
-        # Check if year exists in evidence value
-        return years[0] in ev_val
+
+        # If evidence has no parseable year but starts with + (ISO format),
+        # try to extract from the ISO prefix
+        if not ev_years and ev_val.startswith("+"):
+            match = re.search(r'\+(\d{4})', ev_val)
+            if match:
+                ev_years = [match.group(1)]
+
+        if not ev_years:
+            return False
+
+        # Year-level matching: claim year must match evidence year
+        # This allows "1643" to match "+1643-01-04T00:00:00Z"
+        return any(cy in ev_years for cy in claim_years)
 
     def _is_eligible(self, item: Dict[str, Any], claim: Dict[str, Any]) -> bool:
         """
