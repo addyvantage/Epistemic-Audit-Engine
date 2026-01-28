@@ -1,30 +1,19 @@
 import { NextResponse } from 'next/server'
+import { fetchWithRetry } from '@/lib/fetch-retry';
 
 export async function POST(request: Request) {
     try {
         const body = await request.json()
-        // Proxy to Python Backend
-        // Backend runs on port 8000
-        // Endpoint: /audit (presumed from app.py)
-
-        // NOTE: In production, use ENV var. 
-        // Assuming backend endpoint is /api/audit or similar.
-        // Checking app.py in previous interactions, it defines `app = FastAPI()`. 
-        // Usually routes are `/`.
-        // Let's assume there is a generic POST endpoint.
-        // I need to know the backend route. Step 1155 "uvicorn app:app"
-
-        // Use environment variable for backend URL
         const apiBase = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000';
         const backendUrl = `${apiBase}/audit`;
 
-        const res = await fetch(backendUrl, {
+        const res = await fetchWithRetry(backendUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(body),
-        })
+        }, 10, 500) // Aggressive retry: 10 attempts, starting at 500ms
 
         if (!res.ok) {
             const err = await res.text()

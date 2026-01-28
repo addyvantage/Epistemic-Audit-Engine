@@ -27,12 +27,14 @@ class AuditRequest(BaseModel):
     text: str
 
 pipeline = None
+PIPELINE_READY = False
 
 @app.on_event("startup")
 async def startup_event():
-    global pipeline
+    global pipeline, PIPELINE_READY
     # Initialize singleton
     pipeline = AuditPipeline()
+    PIPELINE_READY = True
 
 @app.post("/audit")
 async def audit_text(request: AuditRequest):
@@ -43,8 +45,8 @@ async def audit_text(request: AuditRequest):
         raise HTTPException(status_code=400, detail="Text too long (max 20,000 characters).")
     
     try:
-        if not pipeline:
-            raise HTTPException(status_code=500, detail="Pipeline not initialized.")
+        if not PIPELINE_READY:
+            raise HTTPException(status_code=503, detail="Pipeline not ready.")
             
         logger.info(f"Received audit request for text length: {len(request.text)}")
         result = pipeline.run(request.text)
@@ -55,4 +57,6 @@ async def audit_text(request: AuditRequest):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    if not PIPELINE_READY:
+        raise HTTPException(status_code=503, detail="Pipeline loading")
+    return {"status": "ready"}
