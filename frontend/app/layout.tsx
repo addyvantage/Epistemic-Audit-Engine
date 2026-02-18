@@ -19,7 +19,7 @@ export default function RootLayout({
     return (
         <html lang="en" suppressHydrationWarning>
             <head />
-            <body className={`font-sans bg-white dark:bg-black min-h-screen flex flex-col antialiased transition-colors duration-500 selection:bg-emerald-500/20 selection:text-emerald-200`}>
+            <body className={`font-sans bg-[#F7F8FA] dark:bg-[#0b0f0c] min-h-screen flex flex-col antialiased transition-colors duration-500 selection:bg-emerald-500/20 selection:text-emerald-200`}>
                 <ThemeProvider>
                     <Navbar />
 
@@ -27,7 +27,7 @@ export default function RootLayout({
                         {children}
                     </main>
 
-                    <footer className="py-8 text-center text-xs text-slate-400 dark:text-neutral-500 border-t border-slate-200 dark:border-white/5 mt-auto bg-white dark:bg-black transition-colors duration-300">
+                    <footer className="py-8 text-center text-xs text-slate-400 dark:text-neutral-500 border-t border-slate-200 dark:border-white/5 mt-auto bg-white dark:bg-transparent transition-colors duration-300">
                         Epistemic Audit Engine v1.2 (Satoshi) • Research Artifact
                     </footer>
                 </ThemeProvider>

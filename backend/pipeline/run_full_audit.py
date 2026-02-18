@@ -48,31 +48,7 @@ class AuditPipeline:
         
         self.detector = HallucinationDetector()
         assert hasattr(self.detector, "detect"), "HallucinationDetector API mismatch: expected detect()"
-        
-        self.risk_aggregator = RiskAggregator()
-        
-        if self.config.get("reproducibility", {}).get("deterministic", True):
-            seed = self.config.get("reproducibility", {}).get("fixed_seed", 42)
-            self._seed_everything(seed)
-            
-        self.extractor = ClaimExtractor()
-        # Defensive assertion for API compatibility
-        assert (
-            hasattr(self.extractor, "extract")
-            or hasattr(self.extractor, "run")
-        ), "ClaimExtractor API mismatch: expected extract() or run()"
-        
-        self.linker = EntityLinker()
-        assert hasattr(self.linker, "link_claims"), "EntityLinker API mismatch: expected link_claims()"
-        
-        self.retriever = EvidenceRetriever()
-        assert hasattr(self.retriever, "retrieve_evidence"), "EvidenceRetriever API mismatch: expected retrieve_evidence()"
-        
-        self.verifier = ClaimVerifier()
-        assert hasattr(self.verifier, "verify_claims"), "ClaimVerifier API mismatch: expected verify_claims()"
-        
-        self.detector = HallucinationDetector()
-        assert hasattr(self.detector, "detect"), "HallucinationDetector API mismatch: expected detect()"
+        assert hasattr(self.detector, "detect_structural"), "HallucinationDetector API mismatch: expected detect_structural()"
         
         self.risk_aggregator = RiskAggregator()
         
@@ -148,11 +124,11 @@ class AuditPipeline:
 
             # Register resolved entities to context for subsequent claims
             subj_ent = linked_claim.get("subject_entity", {})
-            if subj_ent.get("resolution_status") in ["RESOLVED", "RESOLVED_SOFT"]:
+            if subj_ent.get("resolution_status") in ["RESOLVED", "RESOLVED_SOFT", "RESOLVED_COREF"]:
                 entity_context.register_entity(subj_ent, claim.get("sentence_id", 0))
 
             obj_ent = linked_claim.get("object_entity", {})
-            if obj_ent and obj_ent.get("resolution_status") in ["RESOLVED", "RESOLVED_SOFT"]:
+            if obj_ent and obj_ent.get("resolution_status") in ["RESOLVED", "RESOLVED_SOFT", "RESOLVED_COREF"]:
                 entity_context.register_entity(obj_ent, claim.get("sentence_id", 0))
 
             linked_claims.append(linked_claim)
@@ -231,7 +207,7 @@ class AuditPipeline:
             # Fix 4: Safety Check against Authorized Temporal Contradiction (Keep?)
             # If verdict is SUPPORTED (via normal means), check temporal.
             if is_canonical and is_temporal and verdict == "SUPPORTED" and claim.get("verification", {}).get("used_evidence_ids"):
-                 for ev in claim.get("evidence", {}).get("WIKIDATA", []):
+                 for ev in claim.get("evidence", {}).get("wikidata", []):
                      if ev.get("alignment", {}).get("temporal_match") is False:
                          claim["verification"]["verdict"] = "REFUTED"
                          claim["verification"]["confidence"] = 0.9

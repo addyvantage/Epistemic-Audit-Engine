@@ -117,21 +117,11 @@ const HeroSection = () => {
     return (
         <section
             ref={heroRef}
-            className="min-h-screen flex flex-col items-center justify-center text-center px-4 relative overflow-hidden bg-white dark:bg-transparent selection:bg-emerald-500/30"
+            className="min-h-screen flex flex-col items-center justify-center text-center px-4 relative overflow-hidden bg-transparent selection:bg-emerald-500/30"
         >
-            {/* Enhanced Stage Light Glow with Parallax */}
-            <MotionDiv
-                style={{ y: glowY, scale: glowScale }}
-                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[900px] bg-emerald-500/10 blur-[150px] rounded-full pointer-events-none mix-blend-screen dark:mix-blend-plus-lighter opacity-0 dark:opacity-100 transition-opacity duration-1000"
-            />
+            {/* Local Glows Removed in favor of Global CSS Gradient System for Scroll Continuity */}
 
-            {/* Secondary ambient glow */}
-            <MotionDiv
-                style={{ y: useTransform(scrollYProgress, [0, 1], [0, -50]) }}
-                className="absolute top-1/4 right-1/4 w-[400px] h-[400px] bg-white/5 blur-[100px] rounded-full pointer-events-none opacity-0 dark:opacity-100"
-            />
-
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(15,23,42,0.03),transparent_60%)] dark:hidden" />
+            {/* Local Glows and Gradients Removed in favor of Global CSS System */}
 
             <MotionDiv
                 style={{ y: heroY, opacity: heroOpacity }}
@@ -156,7 +146,7 @@ const HeroSection = () => {
                     initial={{ opacity: 0, y: 30, filter: "blur(10px)" }}
                     animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                     transition={{ duration: 1, delay: 0.15, ease: PREMIUM_EASE }}
-                    className="text-5xl md:text-7xl font-medium tracking-[-0.03em] leading-[1.05] mb-8 text-slate-900 dark:text-transparent dark:bg-clip-text dark:bg-gradient-to-b dark:from-white dark:via-neutral-100 dark:to-neutral-400 drop-shadow-sm dark:drop-shadow-[0_0_30px_rgba(255,255,255,0.15)]"
+                    className="text-5xl md:text-7xl font-semibold tracking-[-0.03em] leading-[1.05] mb-8 text-slate-900 drop-shadow-sm dark:text-transparent dark:bg-clip-text dark:bg-gradient-to-b dark:from-white dark:via-neutral-100 dark:to-neutral-400 dark:drop-shadow-[0_0_30px_rgba(255,255,255,0.15)]"
                 >
                     Audit where AI confidence <br />
                     exceeds evidence.
@@ -184,7 +174,7 @@ const HeroSection = () => {
                             whileHover={{ scale: 1.02, boxShadow: "0 15px 40px rgba(16,185,129,0.3)" }}
                             whileTap={{ scale: 0.98 }}
                             transition={{ duration: 0.2, ease: PREMIUM_EASE }}
-                            className="group relative inline-flex items-center gap-3 px-8 py-4 rounded-full bg-slate-900 dark:bg-emerald-600 text-white font-medium text-sm shadow-[0_4px_10px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.1)] dark:shadow-[0_10px_30px_rgba(16,185,129,0.25),inset_0_1px_0_rgba(255,255,255,0.2)] hover:bg-slate-800 dark:hover:bg-emerald-500 transition-all duration-300"
+                            className="group relative inline-flex items-center gap-3 px-8 py-4 rounded-full bg-gradient-to-b from-slate-800 to-slate-900 dark:from-emerald-600 dark:to-emerald-600 text-white font-medium text-sm shadow-[0_4px_20px_rgba(0,0,0,0.1),0_1px_2px_rgba(0,0,0,0.05)] dark:shadow-[0_10px_30px_rgba(16,185,129,0.25),inset_0_1px_0_rgba(255,255,255,0.2)] hover:from-slate-700 hover:to-slate-800 dark:hover:bg-emerald-500 transition-all duration-300"
                             aria-label="Run an epistemic audit"
                         >
                             <span className="relative z-10 tracking-wide">Run Epistemic Audit</span>
@@ -269,7 +259,7 @@ const CapabilitiesSection = () => {
                                 backgroundColor: "rgba(255, 255, 255, 0.02)",
                                 transition: { duration: 0.3 }
                             }}
-                            className="p-8 rounded-2xl border border-white/5 dark:border-neutral-800 hover:border-white/10 dark:hover:border-neutral-700 transition-all duration-500 group relative overflow-hidden"
+                            className="p-8 rounded-2xl bg-white/60 dark:bg-transparent border border-slate-200 dark:border-neutral-800 hover:bg-white dark:hover:bg-transparent hover:border-slate-300 dark:hover:border-neutral-700 shadow-sm hover:shadow-md dark:hover:shadow-none transition-all duration-500 group relative overflow-hidden"
                         >
                             {/* Hover glow effect */}
                             <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-radial from-emerald-500/5 via-transparent to-transparent pointer-events-none" />
