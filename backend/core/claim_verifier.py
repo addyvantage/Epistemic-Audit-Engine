@@ -1,9 +1,13 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Set, Optional
 import re
+import logging
 from .nli_engine import NLIEngine
 from .hallucination_detector import HallucinationDetector
 from .alignment_scorer import AlignmentScorer
 from .hallucination_attributor import HallucinationAttributor
+from .property_mapper import PropertyMapper
+
+logger = logging.getLogger(__name__)
 
 class ClaimVerifier:
     def __init__(self):
@@ -11,6 +15,7 @@ class ClaimVerifier:
         self.detector = HallucinationDetector()
         self.alignment_scorer = AlignmentScorer()
         self.attributor = HallucinationAttributor()
+        self.property_mapper = PropertyMapper()
         
         # v1.3.1 Canonical Restoration (Extended v1.6)
         # Temporal predicates -> date properties
@@ -45,6 +50,49 @@ class ClaimVerifier:
             "nationality": "P27",
             "headquartered": "P159",
             "based in": "P159",
+        }
+
+        self.PREDICATE_PROPERTY_HINTS = {
+            "headquarters": {"P159", "P131", "P276", "P17"},
+            "located in": {"P131", "P276", "P17"},
+            "country": {"P17", "P27"},
+            "ceo": {"P169", "P488", "P39"},
+            "founder": {"P112"},
+            "parent organization": {"P749", "P127", "P355", "P361"},
+            "subsidiary": {"P355", "P749", "P127", "P361"},
+            "acquired": {"P127", "P749", "P355", "P361"},
+            "founded": {"P571", "P112"},
+            "inception": {"P571"},
+            "born": {"P569", "P19"},
+            "died": {"P570", "P20"},
+        }
+
+        self.PROP_LABELS = {
+            "P159": "headquarters location",
+            "P131": "located in administrative territory",
+            "P276": "location",
+            "P17": "country",
+            "P169": "chief executive officer",
+            "P488": "chairperson",
+            "P39": "position held",
+            "P112": "founder",
+            "P749": "parent organization",
+            "P127": "owned by",
+            "P355": "subsidiary",
+            "P361": "part of",
+            "P571": "inception",
+            "P569": "date of birth",
+            "P570": "date of death",
+            "P19": "place of birth",
+            "P20": "place of death",
+            "P27": "country of citizenship",
+            "P577": "publication date",
+        }
+
+        self.TEMPORAL_PROPS = {"P569", "P570", "P571", "P577"}
+        self.ENTITY_RELATION_PROPS = {
+            "P159", "P131", "P276", "P17", "P169", "P488", "P39",
+            "P112", "P749", "P127", "P355", "P361", "P19", "P20", "P27"
         }
 
     def verify_claims(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -86,6 +134,13 @@ class ClaimVerifier:
         
         supporting_ids = []
         refuting_ids = []
+        kg_refutations: List[Dict[str, Any]] = []
+
+        target_wikidata_props = self._resolve_target_properties(claim)
+        wikidata_positive_props = self._collect_positive_wikidata_properties(
+            evidence.get("wikidata", []),
+            claim
+        )
         
         # 1. Evidence Eligibility Filter
         valid_evidence = []
@@ -225,6 +280,21 @@ class ClaimVerifier:
                     # o_match=False with entity values: treat as neutral, not contradiction
                     # The claim may still be true but we can't verify it from this property
 
+                contradiction = self._evaluate_structured_contradiction(
+                    claim=claim,
+                    evidence_item=ev,
+                    target_properties=target_wikidata_props,
+                    positive_properties=wikidata_positive_props,
+                )
+                if contradiction:
+                    evidence_id = ev.get("evidence_id")
+                    if evidence_id:
+                        refuting_ids.append(evidence_id)
+                    kg_refutations.append(contradiction)
+                    has_contradiction = True
+                    if contradiction["confidence"] > best_refute_score:
+                        best_refute_score = contradiction["confidence"]
+
             # B. Wikipedia Logic (Textual -> NLI)
             elif source == "WIKIPEDIA":
                 sent_text = ev.get("sentence", "") or ev.get("snippet", "")
@@ -343,7 +413,11 @@ class ClaimVerifier:
         elif has_contradiction:
             final_verdict = "REFUTED"
             confidence = min(0.95, max(0.7, best_refute_score))
-            reasoning = "Contradicted by textual evidence."
+            if kg_refutations:
+                best_kg = max(kg_refutations, key=lambda x: x.get("confidence", 0.0))
+                reasoning = best_kg.get("reasoning", "Contradicted by Wikidata.")
+            else:
+                reasoning = "Contradicted by textual evidence."
             
         # 3. Non-Critical (e.g. Specificity, Bleed) - BLOCKS SUPPORT
         elif non_critical_hallucinations:
@@ -434,6 +508,9 @@ class ClaimVerifier:
         evidence_sufficiency = self._classify_evidence_sufficiency(evidence, supporting_ids)
         evidence_summary = self._build_evidence_summary(evidence, supporting_ids)
 
+        supporting_ids = [eid for eid in dict.fromkeys(supporting_ids) if eid]
+        refuting_ids = [eid for eid in dict.fromkeys(refuting_ids) if eid]
+
         claim["hallucinations"] = hallucinations
         claim["verification"] = {
             "verdict": final_verdict,
@@ -447,6 +524,112 @@ class ClaimVerifier:
         }
 
         return claim
+
+    def _resolve_target_properties(self, claim: Dict[str, Any]) -> Set[str]:
+        predicate = (claim.get("predicate", "") or "").lower()
+        claim_text = (claim.get("claim_text", "") or "").lower()
+        combined = f"{predicate} {claim_text}".strip()
+
+        target_properties: Set[str] = set(self.property_mapper.get_potential_properties(predicate))
+        for key, props in self.PREDICATE_PROPERTY_HINTS.items():
+            if key in combined:
+                target_properties.update(props)
+
+        return target_properties
+
+    def _collect_positive_wikidata_properties(
+        self,
+        wikidata_evidence: List[Dict[str, Any]],
+        claim: Dict[str, Any]
+    ) -> Set[str]:
+        positive_props: Set[str] = set()
+        claim_object = self._extract_claim_object(claim)
+
+        for ev in wikidata_evidence:
+            prop = ev.get("property")
+            if not prop:
+                continue
+
+            alignment = ev.get("alignment", {})
+            o_match = alignment.get("object_match")
+            t_match = alignment.get("temporal_match")
+            value = str(ev.get("value", "") or "")
+
+            if o_match is True or t_match is True:
+                positive_props.add(prop)
+                continue
+
+            if prop in self.TEMPORAL_PROPS and claim_object and self._temporal_compatible(claim_object, value):
+                positive_props.add(prop)
+
+        return positive_props
+
+    def _evaluate_structured_contradiction(
+        self,
+        claim: Dict[str, Any],
+        evidence_item: Dict[str, Any],
+        target_properties: Set[str],
+        positive_properties: Set[str],
+    ) -> Optional[Dict[str, Any]]:
+        resolution_status = claim.get("subject_entity", {}).get("resolution_status")
+        if resolution_status not in {"RESOLVED", "RESOLVED_SOFT", "RESOLVED_COREF"}:
+            return None
+
+        prop = evidence_item.get("property")
+        if not prop:
+            return None
+
+        if target_properties and prop not in target_properties:
+            return None
+
+        if prop in positive_properties:
+            return None
+
+        claim_object = self._extract_claim_object(claim)
+        if not claim_object:
+            return None
+
+        alignment = evidence_item.get("alignment", {})
+        object_match = alignment.get("object_match")
+        temporal_match = alignment.get("temporal_match")
+        evidence_value = str(evidence_item.get("value", "") or "")
+        prop_label = self.PROP_LABELS.get(prop, prop)
+
+        if prop in self.TEMPORAL_PROPS:
+            claim_years = self._extract_years(claim_object)
+            evidence_years = self._extract_years(evidence_value)
+            if claim_years and evidence_years and not self._temporal_compatible(claim_object, evidence_value):
+                return {
+                    "reasoning": f"Contradicted by Wikidata {prop_label}: claim year does not match authoritative record.",
+                    "confidence": 0.92,
+                }
+            return None
+
+        if prop in self.ENTITY_RELATION_PROPS and object_match is False:
+            confidence = 0.9 if evidence_value.startswith("Q") else 0.88
+            return {
+                "reasoning": f"Contradicted by Wikidata {prop_label} ({evidence_value}).",
+                "confidence": confidence,
+            }
+
+        if temporal_match is False and prop in self.TEMPORAL_PROPS:
+            return {
+                "reasoning": f"Contradicted by Wikidata {prop_label}.",
+                "confidence": 0.9,
+            }
+
+        return None
+
+    def _extract_claim_object(self, claim: Dict[str, Any]) -> str:
+        obj = (claim.get("object", "") or "").strip()
+        if obj:
+            return obj
+
+        claim_text = claim.get("claim_text", "") or ""
+        return claim_text.strip()
+
+    def _extract_years(self, text: str) -> List[str]:
+        return re.findall(r"\b(\d{4})\b", str(text))
         
     def _temporal_compatible(self, claim_val: str, ev_val: str) -> bool:
         """

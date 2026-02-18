@@ -2,6 +2,8 @@ import requests
 import time
 import uuid
 import spacy
+import re
+import logging
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -13,6 +15,8 @@ from .grokipedia_client import GrokipediaClient
 from .primary_document_retriever import PrimaryDocumentRetriever
 from .wikidata_retriever import WikidataRetriever
 from config.core_config import EVIDENCE_MODALITY_TEXTUAL, EVIDENCE_MODALITY_STRUCTURED
+
+logger = logging.getLogger(__name__)
 
 class EvidenceRetriever:
     def __init__(self):
@@ -33,6 +37,22 @@ class EvidenceRetriever:
              self.nlp = None
         
         self.entity_cache = {}
+        self.predicate_property_hints = {
+            "headquarters": ["P159", "P131", "P276", "P17"],
+            "located in": ["P131", "P276", "P17"],
+            "country": ["P17", "P27"],
+            "ceo": ["P169", "P488", "P39"],
+            "founder": ["P112"],
+            "parent organization": ["P749", "P127", "P355", "P361"],
+            "subsidiary": ["P355", "P749", "P127", "P361"],
+            "acquired": ["P127", "P749", "P355", "P361"],
+            "founded": ["P571", "P112"],
+            "inception": ["P571"],
+            "born": ["P569", "P19"],
+            "died": ["P570", "P20"],
+            "revenue": ["P2139"],
+            "profit": ["P2295"],
+        }
 
     def retrieve_evidence(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -50,6 +70,7 @@ class EvidenceRetriever:
                 processed_claim = self._process_claim(claim, p_docs)
                 output_claims.append(processed_claim)
             except Exception as e:
+                logger.exception("Evidence retrieval failed for claim_id=%s", claim.get("claim_id"))
                 # Fallback empty structure
                 claim["evidence"] = {"wikidata": [], "wikipedia": [], "grokipedia": [], "primary_document": []}
                 output_claims.append(claim)
@@ -85,7 +106,7 @@ class EvidenceRetriever:
             query_qid = subj_ent.get("entity_id")
 
         if query_qid:
-            p_ids = self.mapper.get_potential_properties(predicate)
+            p_ids = self._resolve_wikidata_properties(predicate, claim.get("claim_text", ""))
             if p_ids:
                 matches = self.wikidata_retriever.retrieve_structured_evidence(query_qid, p_ids, claim)
                 if matches:
@@ -95,7 +116,8 @@ class EvidenceRetriever:
         # 2. Wikipedia Retrieval (Tier 2 - Narrative)
         wiki_url = subj_ent.get("sources", {}).get("wikipedia")
         if subj_ent.get("source_status", {}).get("wikipedia") == "VERIFIED" and wiki_url:
-            passages = self.passage_retriever.extract_passages(wiki_url, claim.get("claim_text", ""))
+            wiki_query = self._build_wikipedia_query(claim, subj_ent, obj_ent)
+            passages = self.passage_retriever.extract_passages(wiki_url, wiki_query)
             
             if passages:
                 normalized_passages = []
@@ -104,11 +126,17 @@ class EvidenceRetriever:
                         "source": "WIKIPEDIA",
                         "modality": EVIDENCE_MODALITY_TEXTUAL, # Tag as TEXTUAL
                         "url": p["url"],
-                        "sentence": p["snippet"],
-                        "snippet": p["snippet"],
-                        "score": p["score"],
-                        "textual_evidence": p["textual_evidence"],
-                        "evidence_id": self._generate_evidence_id("WIKIPEDIA", p["snippet"] or "null")
+                        "sentence": p.get("sentence") or p.get("snippet"),
+                        "snippet": p.get("snippet"),
+                        "score": p.get("score", 0.0),
+                        "textual_evidence": p.get("textual_evidence", False),
+                        "section_anchor": p.get("section_anchor"),
+                        "matched_terms": p.get("matched_terms", {}),
+                        "explanation": p.get("explanation"),
+                        "evidence_id": self._generate_evidence_id(
+                            "WIKIPEDIA",
+                            f"{p.get('url', '')}:{p.get('snippet') or 'null'}"
+                        )
                     })
                 
                 wikipedia_ev = normalized_passages
@@ -164,6 +192,46 @@ class EvidenceRetriever:
         claim["evidence_status"] = status
         
         return claim
+
+    def _build_wikipedia_query(
+        self,
+        claim: Dict[str, Any],
+        subj_ent: Dict[str, Any],
+        obj_ent: Dict[str, Any]
+    ) -> str:
+        parts: List[str] = []
+
+        subj_name = subj_ent.get("canonical_name") or claim.get("subject", "")
+        predicate = claim.get("predicate", "")
+        claim_object = claim.get("object", "")
+
+        if subj_name:
+            parts.append(str(subj_name))
+        if predicate:
+            parts.append(str(predicate))
+        if claim_object:
+            parts.append(str(claim_object))
+
+        claim_text = claim.get("claim_text", "") or ""
+        years = re.findall(r"\b(1\d{3}|20\d{2})\b", claim_text)
+        nums = re.findall(r"\b\d+(?:\.\d+)?\b", claim_text)
+        if years:
+            parts.extend(years[:2])
+        if nums:
+            parts.extend(nums[:2])
+
+        combined = " ".join([p for p in parts if p]).strip()
+        return combined or claim_text
+
+    def _resolve_wikidata_properties(self, predicate: str, claim_text: str) -> List[str]:
+        properties = set(self.mapper.get_potential_properties(predicate))
+        claim_lower = (claim_text or "").lower()
+
+        for key, values in self.predicate_property_hints.items():
+            if key in claim_lower:
+                properties.update(values)
+
+        return sorted(properties)
 
     def _get_query_direction(self, predicate: str) -> str:
         p = predicate.lower()

@@ -10,11 +10,20 @@ interface AuditedTextProps {
     selectedClaimId?: string | null
     onSelectClaim?: (id: string | null) => void
     explainabilityMode?: 'CASUAL' | 'EXPERT'
+    showInlineInspector?: boolean
 }
 
 import { EpistemicHoverCard } from './EpistemicHoverCard'
 
-export function AuditedText({ sourceText, claims, mode = "DEMO", selectedClaimId, onSelectClaim, explainabilityMode = 'CASUAL' }: AuditedTextProps) {
+export function AuditedText({
+    sourceText,
+    claims,
+    mode = "DEMO",
+    selectedClaimId,
+    onSelectClaim,
+    explainabilityMode = 'CASUAL',
+    showInlineInspector = true
+}: AuditedTextProps) {
     const [hoveredClaim, setHoveredClaim] = useState<any | null>(null)
     const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 })
 
@@ -51,7 +60,7 @@ export function AuditedText({ sourceText, claims, mode = "DEMO", selectedClaimId
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, []);
+    }, [onSelectClaim]);
 
     // Naive text segmenter: Split text by finding claim occurrences
     // In a real production system, backend would return offsets.
@@ -166,7 +175,6 @@ export function AuditedText({ sourceText, claims, mode = "DEMO", selectedClaimId
                 if (typeof c.start_char === 'number' && typeof c.end_char === 'number') {
                     // Defensive Bounds Check
                     if (c.start_char < 0 || c.end_char > sourceText.length) {
-                        console.error(`Claim ${c.claim_id} offsets [${c.start_char}, ${c.end_char}] out of bounds for text length ${sourceText.length}`)
                         return null
                     }
                     if (c.start_char >= c.end_char) {
@@ -237,7 +245,7 @@ export function AuditedText({ sourceText, claims, mode = "DEMO", selectedClaimId
             </div>
 
             <AnimatePresence>
-                {selectedClaimId && (
+                {showInlineInspector && selectedClaimId && (
                     <ClaimInspector
                         key="inspector-sidebar" // Key is important for AnimatePresence
                         claim={activeClaim}

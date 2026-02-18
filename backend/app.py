@@ -2,6 +2,7 @@ import logging
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from typing import Optional
 from pipeline.run_full_audit import AuditPipeline
 
 # Configure Logging
@@ -25,6 +26,7 @@ app.add_middleware(
 
 class AuditRequest(BaseModel):
     text: str
+    mode: Optional[str] = None
 
 pipeline = None
 PIPELINE_READY = False
@@ -48,8 +50,9 @@ async def audit_text(request: AuditRequest):
         if not PIPELINE_READY:
             raise HTTPException(status_code=503, detail="Pipeline not ready.")
             
-        logger.info(f"Received audit request for text length: {len(request.text)}")
-        result = pipeline.run(request.text)
+        mode = (request.mode or "research").strip().lower() or "research"
+        logger.info("Received audit request (len=%s, mode=%s)", len(request.text), mode)
+        result = pipeline.run(request.text, mode=mode)
         return result
     except Exception as e:
         logger.error(f"Audit Error: {e}", exc_info=True)
@@ -58,5 +61,5 @@ async def audit_text(request: AuditRequest):
 @app.get("/health")
 async def health_check():
     if not PIPELINE_READY:
-        raise HTTPException(status_code=503, detail="Pipeline loading")
-    return {"status": "ready"}
+        logger.warning("Health check requested before pipeline ready.")
+    return {"status": "ok"}

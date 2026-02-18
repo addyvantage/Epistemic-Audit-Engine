@@ -1,5 +1,6 @@
 import requests
 import time
+import re
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from .entity_models import ResolvedEntity, EntityCandidate
 
@@ -185,6 +186,9 @@ class EntityLinker:
         Removes linguistic artifacts like 'as', 'the', etc.
         """
         t = text.strip()
+        # Normalize possessive subjects (e.g., "Google's headquarters" -> "Google")
+        t = re.split(r"[’']s\s+", t, maxsplit=1)[0].strip()
+
         # Common prepositions/articles to strip from start
         prefixes = ["as ", "the ", "a ", "an "]
         for p in prefixes:

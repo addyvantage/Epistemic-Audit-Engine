@@ -7,7 +7,7 @@ import { AuditSummary } from '@/components/AuditSummary'
 import { AuditedText } from '@/components/AuditedText'
 import { TimelineView } from '@/components/TimelineView'
 import { ExplainabilityToggle } from '@/components/ExplainabilityToggle'
-import { ClaimInspectorPanel } from '@/components/ClaimInspectorPanel'
+import { InspectorOverlay } from '@/components/InspectorOverlay'
 
 type Phase = 'INPUT' | 'PROCESSING' | 'RESULTS'
 
@@ -232,13 +232,13 @@ export default function AuditPage() {
                             />
                         </section>
 
-                        <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start">
+                        <section className="grid grid-cols-1 gap-6 items-start">
                             <div className="rounded-2xl border border-slate-200 dark:border-border-subtle bg-white dark:bg-black shadow-sm overflow-hidden">
                                 <div className="px-8 py-5 border-b border-slate-200 dark:border-border-subtle bg-white/90 dark:bg-black/80">
                                     <div className="text-xs font-mono uppercase tracking-widest text-slate-400 font-bold">Source Document</div>
                                 </div>
 
-                                <div className="py-12 px-8 md:px-14 max-h-[700px] overflow-y-auto">
+                                <div className="py-14 px-10 md:px-16 max-h-[700px] overflow-y-auto">
                                     <AuditedText
                                         sourceText={sourceText}
                                         claims={result.claims}
@@ -246,12 +246,17 @@ export default function AuditPage() {
                                         selectedClaimId={selectedClaimId}
                                         onSelectClaim={setSelectedClaimId}
                                         explainabilityMode={explainabilityMode}
+                                        showInlineInspector={false}
                                     />
                                 </div>
                             </div>
-
-                            <ClaimInspectorPanel claim={selectedClaim} />
                         </section>
+
+                        <InspectorOverlay
+                            open={!!selectedClaim}
+                            claim={selectedClaim}
+                            onClose={() => setSelectedClaimId(null)}
+                        />
                     </div>
                 ) : null}
             </div>
