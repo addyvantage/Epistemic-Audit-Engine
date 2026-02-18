@@ -17,6 +17,7 @@ class RiskAggregator:
             "REFUTED", 
             "INSUFFICIENT_EVIDENCE", 
             "UNCERTAIN", 
+            "PARTIALLY_SUPPORTED",
             "SUPPORTED", 
             "SUPPORTED_WEAK"
         }
@@ -32,7 +33,7 @@ class RiskAggregator:
         # 2. Counts
         R_count = sum(1 for c in epistemic_claims if c.get("verification", {}).get("verdict") == "REFUTED")
         I_count = sum(1 for c in epistemic_claims if c.get("verification", {}).get("verdict") == "INSUFFICIENT_EVIDENCE")
-        U_count = sum(1 for c in epistemic_claims if c.get("verification", {}).get("verdict") == "UNCERTAIN")
+        U_count = sum(1 for c in epistemic_claims if c.get("verification", {}).get("verdict") in {"UNCERTAIN", "PARTIALLY_SUPPORTED"})
         S_count = sum(1 for c in epistemic_claims if c.get("verification", {}).get("verdict") in ["SUPPORTED", "SUPPORTED_WEAK"]) 
         
         # 3. Ratios

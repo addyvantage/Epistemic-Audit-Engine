@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useMemo } from "react"
+import React, { useEffect, useMemo } from "react"
 import { AlertTriangle, CheckCircle2, ExternalLink, X, XCircle } from "lucide-react"
 
 type Props = {
@@ -21,26 +21,23 @@ type EvidenceItem = {
     value?: string
 }
 
-const verdictStyles: Record<string, { label: string; chip: string; icon: any }> = {
+type DisplayVerdict = "SUPPORTED" | "PARTIALLY_SUPPORTED" | "REFUTED" | "UNCERTAIN"
+
+const verdictStyles: Record<DisplayVerdict, { label: string; chip: string; icon: any }> = {
     SUPPORTED: {
         label: "Supported",
         chip: "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700/50",
         icon: CheckCircle2,
     },
-    SUPPORTED_WEAK: {
-        label: "Weakly Supported",
+    PARTIALLY_SUPPORTED: {
+        label: "Partially supported",
         chip: "bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-700/50",
-        icon: CheckCircle2,
+        icon: AlertTriangle,
     },
     REFUTED: {
         label: "Refuted",
         chip: "bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-700/50",
         icon: XCircle,
-    },
-    INSUFFICIENT_EVIDENCE: {
-        label: "Insufficient Evidence",
-        chip: "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700/50",
-        icon: AlertTriangle,
     },
     UNCERTAIN: {
         label: "Uncertain",
@@ -62,6 +59,15 @@ const WIKIDATA_LABELS: Record<string, string> = {
     P571: "Inception",
     P569: "Date of Birth",
     P570: "Date of Death",
+}
+
+const FACET_LABELS: Record<string, string> = {
+    INCEPTION: "Inception / Founded",
+    HQ: "Headquarters",
+    NONPROFIT: "Non-profit status",
+    NATIONALITY: "Nationality",
+    OWNERSHIP: "Ownership",
+    TEMPORAL_GENERIC: "Temporal detail",
 }
 
 function EvidenceCard({ item }: { item: EvidenceItem }) {
@@ -88,6 +94,23 @@ function EvidenceCard({ item }: { item: EvidenceItem }) {
     )
 }
 
+function dedupeEvidence(items: EvidenceItem[]): EvidenceItem[] {
+    const byEvidenceId = new Map<string, EvidenceItem>()
+    const withoutId: EvidenceItem[] = []
+
+    for (const item of items) {
+        if (!item.evidenceId) {
+            withoutId.push(item)
+            continue
+        }
+        if (!byEvidenceId.has(item.evidenceId)) {
+            byEvidenceId.set(item.evidenceId, item)
+        }
+    }
+
+    return [...Array.from(byEvidenceId.values()), ...withoutId]
+}
+
 function normalizeEvidence(claim: any): EvidenceItem[] {
     const verification = claim?.verification || {}
     const verdict = verification.verdict || "UNCERTAIN"
@@ -101,9 +124,11 @@ function normalizeEvidence(claim: any): EvidenceItem[] {
             evidenceId,
             title: `Primary Document ${item.document_type || ""}`.trim(),
             snippet: item.snippet || "No narrative snippet found",
-            explanation: evidenceId && contradictedBy.has(evidenceId)
-                ? "This primary record conflicts with the claim."
-                : "This primary record provides direct supporting context.",
+            explanation:
+                item.explanation ||
+                (evidenceId && contradictedBy.has(evidenceId)
+                    ? "This primary document conflicts with the claim."
+                    : "This primary document provides direct supporting context."),
             source: "primary_document",
             score: item.score || 0,
             value: item.value,
@@ -115,16 +140,21 @@ function normalizeEvidence(claim: any): EvidenceItem[] {
         const evidenceId = typeof item.evidence_id === "string" ? item.evidence_id : undefined
         const property = item.property || ""
         const propLabel = WIKIDATA_LABELS[property] || property || "Wikidata"
+        const contextOnlyTemporal = item.support_type === "CONTEXT_ONLY_TEMPORAL"
         return {
             reactKey: `wikidata-${idx}`,
             evidenceId,
             title: `Wikidata ${propLabel}`,
             snippet: item.snippet || "No narrative snippet found",
-            explanation: evidenceId && contradictedBy.has(evidenceId)
-                ? `Structured record contradicts the claim for ${propLabel.toLowerCase()}.`
-                : evidenceId && usedEvidenceIds.has(evidenceId)
-                    ? `Structured record supports the claim for ${propLabel.toLowerCase()}.`
-                    : `Related structured record for ${propLabel.toLowerCase()}.`,
+            explanation:
+                item.explanation ||
+                (evidenceId && contradictedBy.has(evidenceId)
+                    ? `Structured record contradicts the claim for ${propLabel.toLowerCase()}.`
+                    : contextOnlyTemporal
+                        ? `Context evidence: ${propLabel.toLowerCase()} is listed, but this claim has no temporal constraint.`
+                        : evidenceId && usedEvidenceIds.has(evidenceId)
+                            ? `Structured record supports the claim for ${propLabel.toLowerCase()}.`
+                            : `Related structured record for ${propLabel.toLowerCase()}.`),
             source: "wikidata",
             score: item.score || 0,
             value: String(item.value ?? ""),
@@ -158,7 +188,7 @@ function normalizeEvidence(claim: any): EvidenceItem[] {
             evidenceId,
             title: "Grokipedia",
             snippet: item.snippet || item.text || item.excerpt || "No narrative snippet found",
-            explanation: "Supplementary narrative context.",
+            explanation: item.explanation || "Supplementary narrative context.",
             source: "grokipedia",
             score: item.score || 0,
             url: item.url,
@@ -166,13 +196,6 @@ function normalizeEvidence(claim: any): EvidenceItem[] {
     })
 
     const combined: EvidenceItem[] = [...primary, ...wikidata, ...wikipedia, ...grokipedia]
-
-    const sourcePrioritySupported: Record<EvidenceItem["source"], number> = {
-        primary_document: 0,
-        wikidata: 1,
-        wikipedia: 2,
-        grokipedia: 3,
-    }
 
     combined.sort((a: EvidenceItem, b: EvidenceItem) => {
         const aRef = a.evidenceId && contradictedBy.has(a.evidenceId) ? 1 : 0
@@ -185,22 +208,38 @@ function normalizeEvidence(claim: any): EvidenceItem[] {
             return b.score - a.score
         }
 
-        if (verdict === "SUPPORTED" || verdict === "SUPPORTED_WEAK") {
+        if (verdict === "SUPPORTED") {
             if (aSup !== bSup) return bSup - aSup
             return b.score - a.score
         }
 
-        if (verdict === "INSUFFICIENT_EVIDENCE" || verdict === "UNCERTAIN") {
+        if (verdict === "PARTIALLY_SUPPORTED" || verdict === "INSUFFICIENT_EVIDENCE" || verdict === "UNCERTAIN") {
             return b.score - a.score
         }
 
-        if (sourcePrioritySupported[a.source] !== sourcePrioritySupported[b.source]) {
-            return sourcePrioritySupported[a.source] - sourcePrioritySupported[b.source]
-        }
         return b.score - a.score
     })
 
-    return combined
+    return dedupeEvidence(combined)
+}
+
+function getDisplayVerdict(claim: any): DisplayVerdict {
+    const rawVerdict = claim?.verification?.verdict || "UNCERTAIN"
+    const facetStatus = claim?.verification?.facet_status || {}
+    const facetValues = Object.values(facetStatus) as string[]
+    const hasSupportedFacet = facetValues.some((value) => value === "SUPPORTED")
+    const hasUnknownFacet = facetValues.some((value) => value === "UNKNOWN")
+
+    if (rawVerdict === "REFUTED") return "REFUTED"
+    if (rawVerdict === "PARTIALLY_SUPPORTED") return "PARTIALLY_SUPPORTED"
+    if (rawVerdict === "SUPPORTED") {
+        if (hasSupportedFacet && hasUnknownFacet) {
+            return "PARTIALLY_SUPPORTED"
+        }
+        return "SUPPORTED"
+    }
+
+    return "UNCERTAIN"
 }
 
 export function ClaimInspectorPanel({ claim, onClose, className = "" }: Props) {
@@ -215,13 +254,23 @@ export function ClaimInspectorPanel({ claim, onClose, className = "" }: Props) {
         )
     }
 
-    const verdict = claim.verification?.verdict || "UNCERTAIN"
     const confidence = Number(claim.verification?.confidence ?? 0)
-    const style = verdictStyles[verdict] || verdictStyles.UNCERTAIN
+    const displayVerdict = getDisplayVerdict(claim)
+    const style = verdictStyles[displayVerdict]
     const VerdictIcon = style.icon
 
-    const contradictedBy: string[] = claim.verification?.contradicted_by || []
+    const contradictedBy: string[] = Array.from(new Set(claim.verification?.contradicted_by || []))
     const hallucinations = claim.hallucinations || []
+    const facetStatus = claim.verification?.facet_status || {}
+    const reasoning = claim.verification?.reasoning || "No specific reasoning provided."
+
+    useEffect(() => {
+        if (process.env.NODE_ENV === "production") return
+        const rawVerdict = claim?.verification?.verdict
+        if (rawVerdict === "SUPPORTED" && displayVerdict === "PARTIALLY_SUPPORTED") {
+            console.warn("Claim metadata mismatch: SUPPORTED verdict with unresolved facets. Display downgraded to PARTIALLY_SUPPORTED.")
+        }
+    }, [claim, displayVerdict])
 
     const evidenceItems = useMemo(() => normalizeEvidence(claim), [claim])
 
@@ -247,12 +296,31 @@ export function ClaimInspectorPanel({ claim, onClose, className = "" }: Props) {
                 </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/20 p-4">
+            <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/20 p-4 space-y-2">
                 <p className="text-sm leading-relaxed text-slate-800 dark:text-slate-100">{claim.claim_text}</p>
-                <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                <div className="text-xs text-slate-500 dark:text-slate-400">
                     Confidence: {(confidence * 100).toFixed(0)}%
                 </div>
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {reasoning}
+                </p>
             </div>
+
+            {Object.keys(facetStatus).length > 0 ? (
+                <div>
+                    <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Claim facets</div>
+                    <div className="space-y-1.5">
+                        {Object.entries(facetStatus).map(([facet, status]) => (
+                            <div key={facet} className="flex items-center justify-between rounded-md border border-slate-200 dark:border-white/10 px-2.5 py-1.5 text-xs">
+                                <span className="text-slate-700 dark:text-slate-200">{FACET_LABELS[facet] || facet}</span>
+                                <span className="text-slate-500 dark:text-slate-400">
+                                    {status === "SUPPORTED" ? "Supported ✅" : status === "CONTRADICTED" ? "Contradicted ❌" : "Unknown ?"}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ) : null}
 
             {hallucinations.length > 0 ? (
                 <div className="space-y-2">
@@ -283,7 +351,7 @@ export function ClaimInspectorPanel({ claim, onClose, className = "" }: Props) {
                 <summary className="cursor-pointer text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">Evidence</summary>
                 <div className="space-y-2">
                     {evidenceItems.map((item) => (
-                        <EvidenceCard key={item.reactKey} item={item} />
+                        <EvidenceCard key={item.evidenceId || item.reactKey} item={item} />
                     ))}
                     {evidenceItems.length === 0 ? (
                         <p className="text-xs text-slate-500 dark:text-slate-400">No evidence items available.</p>

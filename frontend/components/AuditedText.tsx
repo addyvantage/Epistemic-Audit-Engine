@@ -69,7 +69,7 @@ export function AuditedText({
     // v1.3.2 FIX 2: Relax Eligibility (Highlight All Asserted)
     const ELIGIBLE_TYPES = ["TEMPORAL", "RELATION", "FACTUAL_ATTRIBUTE"]
     const ELIGIBLE_STATUS = ["ASSERTED", "VERIFIED", "CONTESTED"]
-    const VALID_VERDICTS = ["SUPPORTED", "SUPPORTED_WEAK", "UNCERTAIN", "REFUTED"]
+    const VALID_VERDICTS = ["SUPPORTED", "SUPPORTED_WEAK", "PARTIALLY_SUPPORTED", "UNCERTAIN", "REFUTED"]
 
     const isEligible = (c: any) => {
         // Must be an active claim type

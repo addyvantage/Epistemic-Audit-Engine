@@ -45,6 +45,14 @@ const verdictStyles: Record<string, any> = {
         icon: ShieldCheck,
         label: "Weakly Supported",
         description: "Partially supported by available sources."
+    },
+    PARTIALLY_SUPPORTED: {
+        bg: "bg-teal-50 dark:bg-teal-950/30",
+        border: "border-teal-100 dark:border-teal-500/20",
+        text: "text-teal-900 dark:text-teal-100",
+        icon: AlertTriangle,
+        label: "Partially Supported",
+        description: "Only some asserted facets are supported."
     }
 }
 
@@ -94,6 +102,8 @@ export function ClaimInspector({ claim, onClose, mode = "DEMO" }: Props) {
             : evidenceSufficiency === "ES_VERIFIED"
                 ? "This claim is verified via structured knowledge graph alignment."
                 : "This claim is corroborated by textual evidence.",
+        PARTIALLY_SUPPORTED: claim.verification?.reasoning
+            || "This claim is partially supported; only some asserted facets are verified.",
         REFUTED: `This claim is refuted because it contradicts authoritative records${primaryDocs.length > 0 ? ' from primary documents' : ''}.`,
         INSUFFICIENT_EVIDENCE: evidenceSufficiency === "ES_EVALUATED"
             ? "Evidence was retrieved but did not meet verification thresholds."

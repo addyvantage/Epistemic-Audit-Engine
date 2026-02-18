@@ -95,6 +95,17 @@ class ClaimVerifier:
         self.TEMPORAL_PROPS = {"P569", "P570", "P571", "P577"}
         self.LOCATION_PROPS = {"P159", "P276", "P131", "P17"}
         self.OWNERSHIP_PROPS = {"P127", "P749", "P355", "P361"}
+        self.INCEPTION_KEYWORDS = ("founded", "inception", "established", "created")
+        self.HQ_KEYWORDS = ("headquartered", "headquarters", "based in", "head office")
+        self.NATIONALITY_KEYWORDS = ("nationality", "citizen of", "citizenship", "from")
+        self.NONPROFIT_KEYWORDS = ("non-profit", "nonprofit", "not-for-profit", "not for profit")
+        self.OWNERSHIP_KEYWORDS = ("acquired", "owned by", "subsidiary", "parent organization", "parent company")
+        self.FACET_TO_PROPS = {
+            "INCEPTION": {"P571"},
+            "HQ": {"P159", "P276", "P131", "P17"},
+            "NATIONALITY": {"P27"},
+            "OWNERSHIP": {"P127", "P749", "P355", "P361"},
+        }
 
     def verify_claims(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -118,7 +129,11 @@ class ClaimVerifier:
         
         # Fix 5: Sanity Rule
         # If neutral text (heuristic: >3 claims), Verified > 0.
-        n_verified = sum(1 for c in output_claims if c["verification"]["verdict"] == "SUPPORTED")
+        n_verified = sum(
+            1
+            for c in output_claims
+            if c["verification"]["verdict"] in {"SUPPORTED", "PARTIALLY_SUPPORTED"}
+        )
         
         if len(output_claims) > 3 and n_verified == 0:
              # Downgrade INSUFFICIENT -> UNCERTAIN
@@ -132,6 +147,11 @@ class ClaimVerifier:
     def _verify_single_claim(self, claim: Dict[str, Any], config: Dict[str, Any] = {}) -> Dict[str, Any]:
         evidence = claim.get("evidence", {}) # wikidata, wikipedia lists
         disable_nli = config.get("ablation", {}).get("disable_nli", False)
+        claim_is_temporal = (claim.get("claim_type") == "TEMPORAL") or self.has_temporal_signal(claim)
+        asserted_facets = self.extract_claim_facets(claim)
+        facet_status: Dict[str, str] = {facet: "UNKNOWN" for facet in sorted(asserted_facets)}
+        facet_support_evidence: Dict[str, Set[str]] = {facet: set() for facet in sorted(asserted_facets)}
+        facet_contradiction_evidence: Dict[str, Set[str]] = {facet: set() for facet in sorted(asserted_facets)}
         
         supporting_ids = []
         refuting_ids = []
@@ -217,7 +237,7 @@ class ClaimVerifier:
                 # Only mark as refutation if:
                 # 1. It's NOT a canonical biographical property, OR
                 # 2. It's canonical but we'll check later if ANY value matches
-                if t_match is False and not is_canonical_biographical:
+                if t_match is False and not is_canonical_biographical and claim_is_temporal:
                     c_val = claim.get("object", "")
                     # v1.6: Use relaxed temporal compatibility for year-level claims
                     if not self._temporal_compatible(c_val, val):
@@ -245,6 +265,7 @@ class ClaimVerifier:
                     and p_match
                     and is_canonical_biographical
                     and self._is_canonical_support_compatible(claim, ev)
+                    and self._canonical_override_allowed(claim, prop_id)
                 ):
                     # For canonical facts, we trust the Wikidata property even without
                     # strict object/temporal alignment. The property value IS the truth.
@@ -260,7 +281,13 @@ class ClaimVerifier:
                 # If subject AND predicate match, and we have positive object/temporal match,
                 # this is DIRECT STRUCTURED SUPPORT regardless of narrative evidence.
                 elif s_match and p_match:
-                    is_positive_match = (o_match is True) or (t_match is True)
+                    is_positive_match = self._is_positive_structured_match(
+                        claim=claim,
+                        prop_id=prop_id,
+                        object_match=o_match,
+                        temporal_match=t_match,
+                        claim_is_temporal=claim_is_temporal,
+                    )
 
                     if is_positive_match:
                         # Full structured support
@@ -272,16 +299,33 @@ class ClaimVerifier:
                             best_support_score = CONFIDENCE_CAP_STRUCTURED
                             best_evidence_item = ev
                             best_evidence_item["support_type"] = "STRUCTURED_INDEPENDENT"
-
                     elif o_match is None and t_match is None:
                         # Subject and predicate match, but can't verify object/temporal
                         # This is still supportive for general facts
-                        supporting_ids.append(ev.get("evidence_id"))
-                        has_direct_support = True
-                        if 0.75 > best_support_score:
-                            best_support_score = 0.75
-                            best_evidence_item = ev
-                            best_evidence_item["support_type"] = "STRUCTURED_PARTIAL"
+                        if prop_id not in self.TEMPORAL_PROPS:
+                            supporting_ids.append(ev.get("evidence_id"))
+                            has_direct_support = True
+                            if 0.75 > best_support_score:
+                                best_support_score = 0.75
+                                best_evidence_item = ev
+                                best_evidence_item["support_type"] = "STRUCTURED_PARTIAL"
+                    else:
+                        # Temporal-only evidence on non-temporal claims is context, not support.
+                        if prop_id in self.TEMPORAL_PROPS and not claim_is_temporal:
+                            ev["support_type"] = "CONTEXT_ONLY_TEMPORAL"
+
+                evidence_id = ev.get("evidence_id")
+                supported_facets_for_ev = self._supported_facets_from_wikidata(
+                    claim=claim,
+                    evidence_item=ev,
+                    claim_is_temporal=claim_is_temporal,
+                    object_match=o_match,
+                    temporal_match=t_match,
+                )
+                for facet in supported_facets_for_ev:
+                    facet_status[facet] = "SUPPORTED"
+                    if evidence_id:
+                        facet_support_evidence.setdefault(facet, set()).add(evidence_id)
 
                     # o_match=False with entity values: treat as neutral, not contradiction
                     # The claim may still be true but we can't verify it from this property
@@ -357,6 +401,10 @@ class ClaimVerifier:
             authoritative_contradictions.append(contradiction)
             refuting_ids.append(evidence_id)
             has_contradiction = True
+            contradicted_facet = self._facet_for_property(ev.get("property", ""))
+            if contradicted_facet in facet_status:
+                facet_status[contradicted_facet] = "CONTRADICTED"
+                facet_contradiction_evidence.setdefault(contradicted_facet, set()).add(evidence_id)
             if contradiction.get("confidence", 0.0) > best_refute_score:
                 best_refute_score = contradiction["confidence"]
 
@@ -388,7 +436,11 @@ class ClaimVerifier:
                 # 3. Scan Wikidata Evidence for Property Match
                 # Even if alignment failed previously, if we find the property, we trust it for Canonical facts.
                 for ev in evidence.get("wikidata", []):
-                    if ev.get("property") == target_prop:
+                    if (
+                        ev.get("property") == target_prop
+                        and self._is_canonical_support_compatible(claim, ev)
+                        and self._canonical_override_allowed(claim, target_prop)
+                    ):
                          # Attach Record
                          supporting_ids.append(ev.get("evidence_id"))
                          has_direct_support = True
@@ -479,15 +531,13 @@ class ClaimVerifier:
                  auth = best_evidence_item.get("authority", "SEC")
                  doc_type = best_evidence_item.get("document_type", "Filing")
                  year = best_evidence_item.get("filing_year", "")
-                 reasoning = f"Verified by Primary Document: {auth} {doc_type} ({year})"
+                 reasoning = f"Supported by primary document: {auth} {doc_type} ({year})."
             elif src == "WIKIDATA":
-                prop = best_evidence_item.get("property", "")
-                val = best_evidence_item.get("value", "") 
-                reasoning = f"Verified by Wikidata property {prop} ({val})."
+                reasoning = self._build_wikidata_support_reasoning(best_evidence_item, claim, claim_is_temporal)
             elif src == "WIKIPEDIA":
                 snippet = best_evidence_item.get("snippet", "")
                 snippet_preview = (snippet[:100] + '...') if len(snippet) > 100 else snippet
-                reasoning = f"Verified by Wikipedia: \"{snippet_preview}\""
+                reasoning = f"Supported by Wikipedia: \"{snippet_preview}\""
         
         # 5. Insufficient - with Weak Support Accumulation (v1.4)
         else:
@@ -517,6 +567,42 @@ class ClaimVerifier:
                         f"Multiple weak corroborations ({weak_support_count} sources, "
                         f"avg score {avg_weak_score:.2f}). Suggestive but not conclusive."
                     )
+
+        supported_facets = sorted([f for f, status in facet_status.items() if status == "SUPPORTED"])
+        contradicted_facets = sorted([f for f, status in facet_status.items() if status == "CONTRADICTED"])
+        unresolved_facets = sorted([f for f, status in facet_status.items() if status not in {"SUPPORTED", "CONTRADICTED"}])
+
+        if final_verdict != "REFUTED" and asserted_facets:
+            if contradicted_facets:
+                final_verdict = "REFUTED"
+                confidence = max(confidence, 0.85)
+                reasoning = (
+                    "Contradicted facets: "
+                    + ", ".join(self._facet_label(f) for f in contradicted_facets)
+                    + "."
+                )
+            elif supported_facets and unresolved_facets:
+                final_verdict = "PARTIALLY_SUPPORTED"
+                confidence = max(confidence, 0.6)
+                reasoning = (
+                    "Partially supported: supported facets "
+                    + ", ".join(self._facet_label(f) for f in supported_facets)
+                    + "; not verified facets "
+                    + ", ".join(self._facet_label(f) for f in unresolved_facets)
+                    + "."
+                )
+            elif not supported_facets and final_verdict == "SUPPORTED":
+                final_verdict = "UNCERTAIN"
+                confidence = min(confidence, 0.5)
+                reasoning = "No asserted facets were directly supported by evidence."
+            elif supported_facets and not unresolved_facets and final_verdict != "SUPPORTED":
+                final_verdict = "SUPPORTED"
+                confidence = max(confidence, 0.7)
+                reasoning = (
+                    "Supported facets: "
+                    + ", ".join(self._facet_label(f) for f in supported_facets)
+                    + "."
+                )
         
         # FIX 2: Verdict-Hallucination Consistency (Normalization)
         # If verdict is SUPPORTED, ensure no hallucinations remain.
@@ -538,6 +624,15 @@ class ClaimVerifier:
             "used_evidence_ids": supporting_ids,
             "contradicted_by": refuting_ids,
             "reasoning": reasoning,
+            "facet_status": facet_status,
+            "supported_facets": supported_facets,
+            "unsupported_facets": unresolved_facets,
+            "contradicted_facets": contradicted_facets,
+            "support_completeness": (
+                "partial"
+                if final_verdict == "PARTIALLY_SUPPORTED"
+                else ("complete" if final_verdict == "SUPPORTED" and asserted_facets else "unknown")
+            ),
             # Evidence Sufficiency (v1.5) - Enables accurate frontend messaging
             "evidence_sufficiency": evidence_sufficiency,
             "evidence_summary": evidence_summary,
@@ -558,6 +653,150 @@ class ClaimVerifier:
 
         return target_properties
 
+    def has_temporal_signal(self, claim: Dict[str, Any]) -> bool:
+        claim_text = f"{claim.get('claim_text', '')} {claim.get('object', '')}".strip()
+        if self._extract_years(claim_text):
+            return True
+        if re.search(r"\b\d{4}-\d{2}-\d{2}\b", claim_text):
+            return True
+        if re.search(r"[+\-]\d{4}-\d{2}-\d{2}", claim_text):
+            return True
+        return False
+
+    def is_temporal_prop(self, prop_id: str) -> bool:
+        return prop_id in self.TEMPORAL_PROPS
+
+    def is_location_prop(self, prop_id: str) -> bool:
+        return prop_id in self.LOCATION_PROPS
+
+    def extract_claim_facets(self, claim: Dict[str, Any]) -> Set[str]:
+        combined = " ".join(
+            [
+                str(claim.get("predicate", "") or ""),
+                str(claim.get("claim_text", "") or ""),
+                str(claim.get("object", "") or ""),
+            ]
+        ).lower()
+
+        facets: Set[str] = set()
+        if any(k in combined for k in self.INCEPTION_KEYWORDS):
+            facets.add("INCEPTION")
+        if any(k in combined for k in self.HQ_KEYWORDS):
+            facets.add("HQ")
+        if any(k in combined for k in self.NATIONALITY_KEYWORDS):
+            facets.add("NATIONALITY")
+        if any(k in combined for k in self.NONPROFIT_KEYWORDS):
+            facets.add("NONPROFIT")
+        if any(k in combined for k in self.OWNERSHIP_KEYWORDS):
+            facets.add("OWNERSHIP")
+        if self.has_temporal_signal(claim):
+            facets.add("TEMPORAL_GENERIC")
+        return facets
+
+    def _is_positive_structured_match(
+        self,
+        claim: Dict[str, Any],
+        prop_id: str,
+        object_match: Optional[bool],
+        temporal_match: Optional[bool],
+        claim_is_temporal: bool,
+    ) -> bool:
+        if self.is_temporal_prop(prop_id):
+            return bool(object_match is True or (temporal_match is True and claim_is_temporal))
+        return bool(object_match is True)
+
+    def _canonical_override_allowed(self, claim: Dict[str, Any], prop_id: str) -> bool:
+        facets = self.extract_claim_facets(claim)
+        if prop_id == "P571":
+            return "INCEPTION" in facets
+        if prop_id == "P159":
+            return "HQ" in facets
+        if prop_id == "P27":
+            return "NATIONALITY" in facets
+        # Other canonical properties still require explicit temporal or location-type claim context.
+        if prop_id in {"P569", "P570", "P19", "P20"}:
+            return claim.get("claim_type") == "TEMPORAL" or self.has_temporal_signal(claim)
+        return False
+
+    def _supported_facets_from_wikidata(
+        self,
+        claim: Dict[str, Any],
+        evidence_item: Dict[str, Any],
+        claim_is_temporal: bool,
+        object_match: Optional[bool],
+        temporal_match: Optional[bool],
+    ) -> Set[str]:
+        facets = self.extract_claim_facets(claim)
+        prop_id = evidence_item.get("property", "")
+        supported: Set[str] = set()
+
+        if "INCEPTION" in facets and prop_id == "P571":
+            # Explicit founded/inception claims with no year can still be supported by P571 existence.
+            if claim_is_temporal:
+                if temporal_match is True or object_match is True or self._temporal_compatible(
+                    self._extract_claim_object(claim),
+                    str(evidence_item.get("value", "") or ""),
+                ):
+                    supported.add("INCEPTION")
+            else:
+                supported.add("INCEPTION")
+
+        if "HQ" in facets and prop_id in self.FACET_TO_PROPS["HQ"] and self._is_place_compatible_with_evidence(claim, evidence_item):
+            supported.add("HQ")
+
+        if "NATIONALITY" in facets and prop_id == "P27":
+            if object_match is True or self._is_canonical_support_compatible(claim, evidence_item):
+                supported.add("NATIONALITY")
+
+        if "OWNERSHIP" in facets and prop_id in self.FACET_TO_PROPS["OWNERSHIP"] and object_match is True:
+            supported.add("OWNERSHIP")
+
+        if "TEMPORAL_GENERIC" in facets and prop_id in self.TEMPORAL_PROPS:
+            if temporal_match is True or self._temporal_compatible(
+                self._extract_claim_object(claim),
+                str(evidence_item.get("value", "") or ""),
+            ):
+                supported.add("TEMPORAL_GENERIC")
+
+        return supported
+
+    def _facet_for_property(self, prop_id: str) -> str:
+        for facet, props in self.FACET_TO_PROPS.items():
+            if prop_id in props:
+                return facet
+        return ""
+
+    def _facet_label(self, facet: str) -> str:
+        labels = {
+            "INCEPTION": "inception/founding",
+            "HQ": "headquarters",
+            "NONPROFIT": "non-profit status",
+            "NATIONALITY": "nationality",
+            "OWNERSHIP": "ownership",
+            "TEMPORAL_GENERIC": "temporal detail",
+        }
+        return labels.get(facet, facet.lower())
+
+    def _build_wikidata_support_reasoning(
+        self,
+        evidence_item: Dict[str, Any],
+        claim: Dict[str, Any],
+        claim_is_temporal: bool,
+    ) -> str:
+        prop = evidence_item.get("property", "")
+        prop_label = self.PROP_LABELS.get(prop, prop)
+        value = evidence_item.get("value", "")
+
+        if prop in self.TEMPORAL_PROPS:
+            if claim_is_temporal:
+                return f"Supported by Wikidata: {prop_label} ({prop}) matches claim timing."
+            return f"Context evidence: Wikidata lists {prop_label} ({prop}) as {value}, but claim has no temporal constraint."
+        if prop in self.LOCATION_PROPS:
+            return f"Supported by Wikidata: {prop_label} ({prop}) aligns with claim location."
+        if prop in self.OWNERSHIP_PROPS:
+            return f"Supported by Wikidata: {prop_label} ({prop}) aligns with claim ownership relation."
+        return f"Supported by Wikidata: {prop_label} ({prop}) aligns with claim."
+
     def _collect_positive_wikidata_properties(
         self,
         wikidata_evidence: List[Dict[str, Any]],
@@ -565,6 +804,7 @@ class ClaimVerifier:
     ) -> Set[str]:
         positive_props: Set[str] = set()
         claim_object = self._extract_claim_object(claim)
+        claim_is_temporal = (claim.get("claim_type") == "TEMPORAL") or self.has_temporal_signal(claim)
 
         for ev in wikidata_evidence:
             prop = ev.get("property")
@@ -576,11 +816,18 @@ class ClaimVerifier:
             t_match = alignment.get("temporal_match")
             value = str(ev.get("value", "") or "")
 
-            if o_match is True or t_match is True:
+            is_positive = self._is_positive_structured_match(
+                claim=claim,
+                prop_id=prop,
+                object_match=o_match,
+                temporal_match=t_match,
+                claim_is_temporal=claim_is_temporal,
+            )
+            if is_positive:
                 positive_props.add(prop)
                 continue
 
-            if prop in self.TEMPORAL_PROPS and claim_object and self._temporal_compatible(claim_object, value):
+            if prop in self.TEMPORAL_PROPS and claim_object and claim_is_temporal and self._temporal_compatible(claim_object, value):
                 positive_props.add(prop)
                 continue
 
@@ -599,6 +846,8 @@ class ClaimVerifier:
             return False
 
         if prop in self.TEMPORAL_PROPS:
+            if prop == "P571" and "INCEPTION" in self.extract_claim_facets(claim) and not self.has_temporal_signal(claim):
+                return True
             return self._temporal_compatible(claim_object, evidence_value)
 
         if prop in {"P19", "P20", "P159"}:
@@ -991,13 +1240,19 @@ class ClaimVerifier:
             }
         }
 
+        seen_wikidata_used_ids: Set[str] = set()
+        seen_wikipedia_used_ids: Set[str] = set()
+        seen_primary_used_ids: Set[str] = set()
+
         # Process Wikidata evidence
         for ev in evidence.get("wikidata", []):
             summary["wikidata"]["total"] += 1
-            if ev.get("evidence_id") in used_ids_set:
+            evidence_id = ev.get("evidence_id")
+            if evidence_id in used_ids_set and evidence_id not in seen_wikidata_used_ids:
+                seen_wikidata_used_ids.add(evidence_id)
                 summary["wikidata"]["used"] += 1
                 summary["wikidata"]["used_items"].append({
-                    "evidence_id": ev.get("evidence_id"),
+                    "evidence_id": evidence_id,
                     "source": "WIKIDATA",
                     "property": ev.get("property", ""),
                     "value": str(ev.get("value", "")),
@@ -1008,11 +1263,13 @@ class ClaimVerifier:
         # Process Wikipedia evidence
         for ev in evidence.get("wikipedia", []):
             summary["wikipedia"]["total"] += 1
-            if ev.get("evidence_id") in used_ids_set:
+            evidence_id = ev.get("evidence_id")
+            if evidence_id in used_ids_set and evidence_id not in seen_wikipedia_used_ids:
+                seen_wikipedia_used_ids.add(evidence_id)
                 summary["wikipedia"]["used"] += 1
                 snippet = ev.get("snippet", "") or ev.get("sentence", "") or ""
                 summary["wikipedia"]["used_items"].append({
-                    "evidence_id": ev.get("evidence_id"),
+                    "evidence_id": evidence_id,
                     "source": "WIKIPEDIA",
                     "snippet": snippet[:150],
                     "url": ev.get("url", "")
@@ -1021,15 +1278,20 @@ class ClaimVerifier:
         # Process Primary Document evidence
         for ev in evidence.get("primary_document", []):
             summary["primary_document"]["total"] += 1
-            if ev.get("evidence_id") in used_ids_set:
+            evidence_id = ev.get("evidence_id")
+            if evidence_id in used_ids_set and evidence_id not in seen_primary_used_ids:
+                seen_primary_used_ids.add(evidence_id)
                 summary["primary_document"]["used"] += 1
                 summary["primary_document"]["used_items"].append({
-                    "evidence_id": ev.get("evidence_id"),
+                    "evidence_id": evidence_id,
                     "source": "PRIMARY_DOCUMENT",
                     "authority": ev.get("authority", "SEC"),
                     "document_type": ev.get("document_type", "Filing"),
                     "filing_year": ev.get("filing_year", ""),
                     "snippet": (ev.get("snippet", "") or ev.get("value", "") or "")[:150]
                 })
+
+        for key in ("wikidata", "wikipedia", "primary_document"):
+            summary[key]["used_items"].sort(key=lambda item: str(item.get("evidence_id", "")))
 
         return summary

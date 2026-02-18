@@ -19,6 +19,7 @@ interface EpistemicHighlightProps {
 const HIGHLIGHT_CLASS_MAP: Record<string, string> = {
     SUPPORTED: "bg-emerald-200/50 dark:bg-emerald-500/30 text-emerald-900 dark:text-emerald-100",
     SUPPORTED_WEAK: "bg-emerald-200/50 dark:bg-emerald-500/30 text-emerald-900 dark:text-emerald-100",
+    PARTIALLY_SUPPORTED: "bg-teal-200/50 dark:bg-teal-500/30 text-teal-900 dark:text-teal-100",
     REFUTED: "bg-red-200/50 dark:bg-red-500/30 text-red-900 dark:text-red-100",
     UNCERTAIN: "bg-amber-200/50 dark:bg-amber-500/30 text-amber-900 dark:text-amber-100",
     META_EPISTEMIC: "bg-slate-100 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300",
@@ -27,6 +28,7 @@ const HIGHLIGHT_CLASS_MAP: Record<string, string> = {
 const FOCUS_RING_MAP: Record<string, string> = {
     SUPPORTED: "focus:ring-emerald-400",
     SUPPORTED_WEAK: "focus:ring-emerald-400",
+    PARTIALLY_SUPPORTED: "focus:ring-teal-400",
     REFUTED: "focus:ring-red-400",
     UNCERTAIN: "focus:ring-amber-400",
 }
@@ -45,6 +47,7 @@ export function EpistemicHighlight({ children, onClick, onMouseEnter, onMouseLea
     const getAriaLabel = () => {
         if (verdict === "REFUTED") return "Claim refuted"
         if (verdict === "SUPPORTED" || verdict === "SUPPORTED_WEAK") return "Claim verified"
+        if (verdict === "PARTIALLY_SUPPORTED") return "Claim partially supported"
         return "Claim uncertain"
     }
 
@@ -91,6 +94,7 @@ export function EpistemicHighlight({ children, onClick, onMouseEnter, onMouseLea
                 rounded-sm
                 ${verdict === "REFUTED" ? "bg-red-400/20" :
                     (verdict === "SUPPORTED" || verdict === "SUPPORTED_WEAK") ? "bg-emerald-400/20" :
+                        verdict === "PARTIALLY_SUPPORTED" ? "bg-teal-400/20" :
                         "bg-amber-400/20"
                 }`}
             />

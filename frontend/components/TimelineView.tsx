@@ -110,6 +110,7 @@ export function TimelineView({ claims, onClaimClick, activeClaimId, explainabili
             {/* 3. Legend (Simplified) */}
             <div className="border-t border-slate-200/60 dark:border-white/10 bg-slate-50/60 dark:bg-neutral-900/60 px-6 py-3 flex justify-center gap-8 transition-colors duration-500">
                 <LegendItem color="bg-emerald-600" label="Supported" />
+                <LegendItem color="bg-teal-500" label="Partially supported" />
                 <LegendItem color="bg-amber-400" label="Uncertain" />
                 <LegendItem color="bg-red-500" label="Refuted" />
             </div>
@@ -123,11 +124,12 @@ import { PREMIUM_EASE } from "@/lib/motion-variants"
 const MotionButton = motion.button as any
 
 function ClaimNode({ claim, idx, isActive, onClaimClick, ref }: any) {
-    const verdict = (claim.verification?.verdict || "UNCERTAIN") as "SUPPORTED" | "SUPPORTED_WEAK" | "REFUTED" | "UNCERTAIN"
+    const verdict = (claim.verification?.verdict || "UNCERTAIN") as "SUPPORTED" | "SUPPORTED_WEAK" | "PARTIALLY_SUPPORTED" | "REFUTED" | "UNCERTAIN"
 
     const colors = {
         SUPPORTED: 'bg-emerald-600 shadow-[0_0_0_6px_rgba(16,185,129,0.1)] dark:shadow-[0_0_0_6px_rgba(16,185,129,0.05)]',
         SUPPORTED_WEAK: 'bg-emerald-600 shadow-[0_0_0_6px_rgba(16,185,129,0.1)] dark:shadow-[0_0_0_6px_rgba(16,185,129,0.05)]',
+        PARTIALLY_SUPPORTED: 'bg-teal-500 shadow-[0_0_0_6px_rgba(20,184,166,0.1)] dark:shadow-[0_0_0_6px_rgba(20,184,166,0.05)]',
         REFUTED: 'bg-red-500 shadow-[0_0_0_6px_rgba(239,68,68,0.1)] dark:shadow-[0_0_0_6px_rgba(239,68,68,0.05)]',
         UNCERTAIN: 'bg-amber-400 shadow-[0_0_0_6px_rgba(251,191,36,0.1)] dark:shadow-[0_0_0_6px_rgba(251,191,36,0.05)]'
     }

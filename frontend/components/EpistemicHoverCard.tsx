@@ -21,6 +21,7 @@ export function EpistemicHoverCard({ claim, position, visible, explainabilityMod
     const verdict = claim.verification?.verdict || "UNCERTAIN"
     const isRefuted = verdict === "REFUTED"
     const isSupported = verdict === "SUPPORTED" || verdict === "SUPPORTED_WEAK"
+    const isPartiallySupported = verdict === "PARTIALLY_SUPPORTED"
     // const isUncertain = !isRefuted && !isSupported
 
     // Reasoning (Expert vs Casual)
@@ -89,11 +90,19 @@ export function EpistemicHoverCard({ claim, position, visible, explainabilityMod
     } else if (isSupported) {
         bgClass = "bg-emerald-50/90 dark:bg-neutral-900/95 border-emerald-300 dark:border-white/10 shadow-[0_8px_32px_-4px_rgba(5,150,105,0.12)]"
         statusColor = "bg-emerald-500"
-        headerLabel = isExpert ? "SUPPORTED" : "Verified"
+        headerLabel = isExpert ? "SUPPORTED" : "Supported"
         accentColor = "bg-emerald-500/80"
         riskFillWidth = '15%'
         riskLabel = "Low Impact"
         citationTint = "border-emerald-400 group-hover:border-emerald-500 hover:shadow-[0_0_8px_rgba(16,185,129,0.2)]"
+    } else if (isPartiallySupported) {
+        bgClass = "bg-teal-50/90 dark:bg-neutral-900/95 border-teal-300 dark:border-white/10 shadow-[0_8px_32px_-4px_rgba(13,148,136,0.12)]"
+        statusColor = "bg-teal-500"
+        headerLabel = isExpert ? "PARTIALLY_SUPPORTED" : "Partially supported"
+        accentColor = "bg-teal-500/80"
+        riskFillWidth = '35%'
+        riskLabel = "Moderate Impact"
+        citationTint = "border-teal-400 group-hover:border-teal-500 hover:shadow-[0_0_8px_rgba(13,148,136,0.2)]"
     }
 
     // Motion Container Variants
@@ -161,7 +170,7 @@ export function EpistemicHoverCard({ claim, position, visible, explainabilityMod
                             </div>
                             <div className="flex flex-col items-end">
                                 <span className="text-[10px] font-mono font-bold opacity-60 text-slate-700 dark:text-neutral-300">
-                                    {isSupported || isRefuted ? "VERIFIABLE" : "INDETERMINATE"}
+                                    {isSupported || isRefuted || isPartiallySupported ? "VERIFIABLE" : "INDETERMINATE"}
                                 </span>
                                 {isExpert && claim.verification?.confidence !== undefined && (
                                     <span className="text-[9px] opacity-40 font-mono text-slate-500 dark:text-neutral-400">
