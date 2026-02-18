@@ -3,6 +3,8 @@ import os
 import json
 import random
 import time
+import copy
+import hashlib
 from typing import Dict, Any, Optional, List
 import logging
 
@@ -51,6 +53,10 @@ class AuditPipeline:
         assert hasattr(self.detector, "detect_structural"), "HallucinationDetector API mismatch: expected detect_structural()"
         
         self.risk_aggregator = RiskAggregator()
+        self._result_cache: Dict[str, Dict[str, Any]] = {}
+        self._result_cache_ttl_s = int(
+            self.config.get("reproducibility", {}).get("result_cache_ttl_s", 300)
+        )
         
         logger.info("Pipeline Ready.")
 
@@ -81,24 +87,99 @@ class AuditPipeline:
         os.environ["PYTHONHASHSEED"] = str(seed)
         logger.info(f"Global seed set to {seed} (Deterministic Mode)")
 
+    def _prune_result_cache(self, now: float) -> None:
+        expired = [
+            cache_key
+            for cache_key, payload in self._result_cache.items()
+            if now - payload.get("created_at", 0.0) > self._result_cache_ttl_s
+        ]
+        for cache_key in expired:
+            self._result_cache.pop(cache_key, None)
+
+    def _build_mode_performance_config(self, mode: str) -> Dict[str, Any]:
+        mode_norm = (mode or "research").strip().lower()
+        if mode_norm == "demo":
+            return {
+                "max_claims": 8,
+                "max_retrieval_claims": 6,
+                "wikidata_property_limit": 4,
+                "wikipedia_max_passages": 1,
+                "entity_timeout_s": 3.0,
+                "grok_head_timeout_s": 1.0,
+                "wikidata_timeout_s": 3.0,
+                "wikipedia_timeout_s": 4.0,
+                "demo_skip_wikipedia_if_wikidata": True,
+                "demo_wikipedia_numeric_or_temporal_only": True,
+            }
+        return {
+            "max_claims": 0,
+            "max_retrieval_claims": 0,
+            "wikidata_property_limit": 0,
+            "wikipedia_max_passages": 2,
+            "entity_timeout_s": 5.0,
+            "grok_head_timeout_s": 2.0,
+            "wikidata_timeout_s": 5.0,
+            "wikipedia_timeout_s": 8.0,
+            "demo_skip_wikipedia_if_wikidata": False,
+            "demo_wikipedia_numeric_or_temporal_only": False,
+        }
+
+    def _build_run_cache_key(self, text: str, mode: str, config: Dict[str, Any]) -> str:
+        payload = {
+            "text": text,
+            "mode": mode,
+            "ablation": config.get("ablation", {}),
+            "performance": config.get("performance", {}),
+            "version": "pipeline-cache-v2",
+        }
+        serialized = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
     def run(self, text: str, mode: str = "research", ablation_overrides: Dict[str, bool] = None) -> Dict[str, Any]:
         # Merge config
+        mode_normalized = (mode or "research").strip().lower() or "research"
         repro_config = self.config.get("reproducibility", {})
         ablation_config = self.config.get("ablation", {}).copy()
         if ablation_overrides:
             ablation_config.update(ablation_overrides)
+        if mode_normalized == "demo" and "disable_nli" not in (ablation_overrides or {}):
+            ablation_config["disable_nli"] = True
+
+        performance_config = self._build_mode_performance_config(mode_normalized)
         
         pipeline_config = {
-            "mode": mode,
+            "mode": mode_normalized,
             "ablation": ablation_config,
-            "reproducibility": repro_config
+            "reproducibility": repro_config,
+            "performance": performance_config,
         }
+
+        cache_enabled = bool(repro_config.get("cache_evidence", True))
+        now = time.monotonic()
+        if cache_enabled:
+            self._prune_result_cache(now)
+            cache_key = self._build_run_cache_key(text, mode_normalized, pipeline_config)
+            cached_payload = self._result_cache.get(cache_key)
+            if cached_payload:
+                logger.info("Audit cache hit (mode=%s key=%s)", mode_normalized, cache_key[:10])
+                return copy.deepcopy(cached_payload["result"])
+        else:
+            cache_key = ""
+
+        phase_timings_ms: Dict[str, int] = {}
+        t0 = time.perf_counter()
 
         # Phase 1: Extraction
         logger.info(f"Phase 1: Extraction ({len(text)} chars)...")
         p1 = self.extractor.extract(text)
         p1["pipeline_config"] = pipeline_config
-        p1["metadata"]["mode"] = mode
+        p1["metadata"]["mode"] = mode_normalized
+        max_claims = int(performance_config.get("max_claims") or 0)
+        if mode_normalized == "demo" and max_claims > 0 and len(p1.get("claims", [])) > max_claims:
+            dropped = len(p1["claims"]) - max_claims
+            p1["claims"] = p1["claims"][:max_claims]
+            p1["metadata"]["claims_truncated"] = dropped
+        phase_timings_ms["extract"] = int((time.perf_counter() - t0) * 1000)
 
         # Phase 1.5: Initialize Entity Context (v1.4)
         # The EntityContext tracks named entities across the document for coreference resolution.
@@ -108,6 +189,7 @@ class AuditPipeline:
 
         # Phase 2: Linking with Entity Context
         logger.info("Phase 2: Linking...")
+        t1 = time.perf_counter()
 
         # Two-pass linking for coreference support:
         # Pass 1: Link claims to gather named entities
@@ -119,7 +201,10 @@ class AuditPipeline:
         linked_claims = []
         for claim in p1.get("claims", []):
             # Link this claim (may use context for generic references)
-            linked_result = self.linker.link_claims({"claims": [claim]})
+            linked_result = self.linker.link_claims({
+                "claims": [claim],
+                "pipeline_config": pipeline_config
+            })
             linked_claim = linked_result["claims"][0]
 
             # Register resolved entities to context for subsequent claims
@@ -135,12 +220,14 @@ class AuditPipeline:
 
         p2 = {"claims": linked_claims, "metadata": p1.get("metadata", {})}
         p2["pipeline_config"] = pipeline_config
+        phase_timings_ms["link"] = int((time.perf_counter() - t1) * 1000)
 
         # Clear context after linking (optional, for memory)
         self.linker.clear_context()
         
         # Phase 3: Evidence
         logger.info("Phase 3: Evidence...")
+        t2 = time.perf_counter()
         
         # Pre-Filter (v1.2 Performance)
         claims_to_retrieve = []
@@ -160,6 +247,21 @@ class AuditPipeline:
                 skipped_claims.append(claim)
             else:
                 claims_to_retrieve.append(claim)
+
+        max_retrieval_claims = int(performance_config.get("max_retrieval_claims") or 0)
+        if mode_normalized == "demo" and max_retrieval_claims > 0 and len(claims_to_retrieve) > max_retrieval_claims:
+            overflow = claims_to_retrieve[max_retrieval_claims:]
+            claims_to_retrieve = claims_to_retrieve[:max_retrieval_claims]
+            for claim in overflow:
+                claim["evidence"] = {"wikidata": [], "wikipedia": [], "grokipedia": [], "primary_document": []}
+                claim["evidence_status"] = {
+                    "primary_document": "SKIPPED",
+                    "wikidata": "SKIPPED",
+                    "wikipedia": "SKIPPED",
+                    "grokipedia": "SKIPPED",
+                    "anchor_status": "SKIPPED_DEMO_LIMIT",
+                }
+                skipped_claims.append(claim)
                 
         logger.info(f"Pre-filtered {len(skipped_claims)} claims (Structural Hallucinations). Retrieving {len(claims_to_retrieve)} claims.")
         
@@ -171,11 +273,14 @@ class AuditPipeline:
         # Re-merge
         p3["claims"].extend(skipped_claims)
         p3["pipeline_config"] = pipeline_config
+        phase_timings_ms["retrieve"] = int((time.perf_counter() - t2) * 1000)
         
         # Phase 4: Verification
         logger.info("Phase 4: Verification...")
+        t3 = time.perf_counter()
         p4 = self.verifier.verify_claims(p3)
         p4["pipeline_config"] = pipeline_config
+        phase_timings_ms["verify"] = int((time.perf_counter() - t3) * 1000)
         
         # Phase 5: Hallucination Detection (Merged into Phase 4)
         # claim_verifier now handles detection to inform verdicts.
@@ -282,11 +387,36 @@ class AuditPipeline:
                  raise RuntimeError(f"Epistemic violation: Supported claim flagged as Unsupported (H1). Claim ID: {c.get('claim_id')}")
 
         # 4. Canonical Risk Contract (v1.3.9)
+        t4 = time.perf_counter()
         risk_result = self.risk_aggregator.calculate_risk([], final_claims)
+        phase_timings_ms["aggregate"] = int((time.perf_counter() - t4) * 1000)
 
-        return {
+        total_elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        phase_timings_ms["total"] = total_elapsed_ms
+        logger.info(
+            "Audit timings ms mode=%s extract=%s link=%s retrieve=%s verify=%s aggregate=%s total=%s",
+            mode_normalized,
+            phase_timings_ms.get("extract", 0),
+            phase_timings_ms.get("link", 0),
+            phase_timings_ms.get("retrieve", 0),
+            phase_timings_ms.get("verify", 0),
+            phase_timings_ms.get("aggregate", 0),
+            phase_timings_ms.get("total", 0),
+        )
+
+        result = {
             "overall_risk": risk_result["overall_risk"],
             "hallucination_score": risk_result["hallucination_score"],
             "summary": risk_result["summary"],
             "claims": final_claims
         }
+        if os.getenv("DEBUG_TIMINGS", "0") == "1":
+            result["debug_timings_ms"] = phase_timings_ms
+
+        if cache_enabled and cache_key:
+            self._result_cache[cache_key] = {
+                "created_at": time.monotonic(),
+                "result": copy.deepcopy(result),
+            }
+
+        return result

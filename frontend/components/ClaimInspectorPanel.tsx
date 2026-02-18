@@ -1,12 +1,13 @@
 "use client"
 
-import React, { useEffect, useMemo } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { AlertTriangle, CheckCircle2, ExternalLink, X, XCircle } from "lucide-react"
 
 type Props = {
     claim: any | null
     onClose?: () => void
     className?: string
+    explainabilityMode?: "CASUAL" | "EXPERT"
 }
 
 type EvidenceItem = {
@@ -19,9 +20,11 @@ type EvidenceItem = {
     source: "primary_document" | "wikidata" | "wikipedia" | "grokipedia"
     score: number
     value?: string
+    badges: string[]
 }
 
 type DisplayVerdict = "SUPPORTED" | "PARTIALLY_SUPPORTED" | "REFUTED" | "UNCERTAIN"
+type InspectorTab = "VERDICT" | "EVIDENCE" | "DEBUG"
 
 const verdictStyles: Record<DisplayVerdict, { label: string; chip: string; icon: any }> = {
     SUPPORTED: {
@@ -72,14 +75,24 @@ const FACET_LABELS: Record<string, string> = {
 
 function EvidenceCard({ item }: { item: EvidenceItem }) {
     return (
-        <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.02] p-3 space-y-2">
-            <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">{item.title}</div>
+        <article className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.02] p-3 space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">{item.title}</div>
+                <div className="flex items-center gap-1 flex-wrap justify-end">
+                    {item.badges.map((badge) => (
+                        <span
+                            key={`${item.reactKey}-${badge}`}
+                            className="px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/10 text-[10px] text-slate-500 dark:text-slate-400"
+                        >
+                            {badge}
+                        </span>
+                    ))}
+                </div>
+            </div>
             {item.value ? <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{item.value}</div> : null}
             <p className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed">{item.snippet || "No narrative snippet found"}</p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">Explanation: {item.explanation}</p>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
-                Evidence ID: {item.evidenceId || "missing evidence_id"}
-            </p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">{item.explanation}</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">Evidence ID: {item.evidenceId || "missing evidence_id"}</p>
             {item.url ? (
                 <a
                     href={item.url}
@@ -87,10 +100,10 @@ function EvidenceCard({ item }: { item: EvidenceItem }) {
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-[11px] text-sky-600 dark:text-sky-400"
                 >
-                    Source <ExternalLink className="w-3 h-3" />
+                    Open source <ExternalLink className="w-3 h-3" />
                 </a>
             ) : null}
-        </div>
+        </article>
     )
 }
 
@@ -109,6 +122,16 @@ function dedupeEvidence(items: EvidenceItem[]): EvidenceItem[] {
     }
 
     return [...Array.from(byEvidenceId.values()), ...withoutId]
+}
+
+function alignmentBadges(alignment: any): string[] {
+    if (!alignment) return []
+    const badges: string[] = []
+    if (alignment.subject_match === true) badges.push("subject")
+    if (alignment.predicate_match === true) badges.push("predicate")
+    if (alignment.object_match === true) badges.push("object")
+    if (alignment.temporal_match === true) badges.push("temporal")
+    return badges
 }
 
 function normalizeEvidence(claim: any): EvidenceItem[] {
@@ -133,6 +156,7 @@ function normalizeEvidence(claim: any): EvidenceItem[] {
             score: item.score || 0,
             value: item.value,
             url: item.url,
+            badges: ["primary"],
         }
     })
 
@@ -141,6 +165,13 @@ function normalizeEvidence(claim: any): EvidenceItem[] {
         const property = item.property || ""
         const propLabel = WIKIDATA_LABELS[property] || property || "Wikidata"
         const contextOnlyTemporal = item.support_type === "CONTEXT_ONLY_TEMPORAL"
+        const badges = [
+            `wikidata:${property || "unknown"}`,
+            ...alignmentBadges(item.alignment),
+        ]
+        if (typeof item.score === "number" && item.score > 0) {
+            badges.push(`score:${item.score.toFixed(2)}`)
+        }
         return {
             reactKey: `wikidata-${idx}`,
             evidenceId,
@@ -159,12 +190,16 @@ function normalizeEvidence(claim: any): EvidenceItem[] {
             score: item.score || 0,
             value: String(item.value ?? ""),
             url: item.url,
+            badges,
         }
     })
 
     const wikipedia = (claim?.evidence?.wikipedia || []).map((item: any, idx: number): EvidenceItem => {
         const evidenceId = typeof item.evidence_id === "string" ? item.evidence_id : undefined
         const snippet = item.snippet || item.sentence || "No narrative snippet found"
+        const badges = ["wikipedia"]
+        if (item.section_anchor) badges.push(`section:${item.section_anchor}`)
+        if (typeof item.score === "number" && item.score > 0) badges.push(`score:${item.score.toFixed(2)}`)
         return {
             reactKey: `wikipedia-${idx}`,
             evidenceId,
@@ -178,6 +213,7 @@ function normalizeEvidence(claim: any): EvidenceItem[] {
             source: "wikipedia",
             score: item.score || 0,
             url: item.url,
+            badges,
         }
     })
 
@@ -192,6 +228,7 @@ function normalizeEvidence(claim: any): EvidenceItem[] {
             source: "grokipedia",
             score: item.score || 0,
             url: item.url,
+            badges: ["grokipedia"],
         }
     })
 
@@ -210,10 +247,6 @@ function normalizeEvidence(claim: any): EvidenceItem[] {
 
         if (verdict === "SUPPORTED") {
             if (aSup !== bSup) return bSup - aSup
-            return b.score - a.score
-        }
-
-        if (verdict === "PARTIALLY_SUPPORTED" || verdict === "INSUFFICIENT_EVIDENCE" || verdict === "UNCERTAIN") {
             return b.score - a.score
         }
 
@@ -242,10 +275,16 @@ function getDisplayVerdict(claim: any): DisplayVerdict {
     return "UNCERTAIN"
 }
 
-export function ClaimInspectorPanel({ claim, onClose, className = "" }: Props) {
+export function ClaimInspectorPanel({ claim, onClose, className = "", explainabilityMode = "CASUAL" }: Props) {
+    const [activeTab, setActiveTab] = useState<InspectorTab>("VERDICT")
+
+    useEffect(() => {
+        setActiveTab("VERDICT")
+    }, [claim?.claim_id, explainabilityMode])
+
     if (!claim) {
         return (
-            <aside className={`rounded-2xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/[0.02] backdrop-blur-sm p-6 min-h-[420px] ${className}`.trim()}>
+            <aside className={`rounded-2xl border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/[0.02] p-6 min-h-[420px] ${className}`.trim()}>
                 <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-2">Claim Inspector</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
                     Select a highlighted claim to inspect evidence.
@@ -263,6 +302,15 @@ export function ClaimInspectorPanel({ claim, onClose, className = "" }: Props) {
     const hallucinations = claim.hallucinations || []
     const facetStatus = claim.verification?.facet_status || {}
     const reasoning = claim.verification?.reasoning || "No specific reasoning provided."
+    const evidenceItems = useMemo(() => normalizeEvidence(claim), [claim])
+
+    const tabs: Array<{ key: InspectorTab; label: string }> = [
+        { key: "VERDICT", label: "Verdict" },
+        { key: "EVIDENCE", label: "Evidence" },
+    ]
+    if (explainabilityMode === "EXPERT") {
+        tabs.push({ key: "DEBUG", label: "Debug" })
+    }
 
     useEffect(() => {
         if (process.env.NODE_ENV === "production") return
@@ -272,12 +320,10 @@ export function ClaimInspectorPanel({ claim, onClose, className = "" }: Props) {
         }
     }, [claim, displayVerdict])
 
-    const evidenceItems = useMemo(() => normalizeEvidence(claim), [claim])
-
     return (
-        <aside className={`rounded-2xl border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0A0A0A]/95 backdrop-blur-sm p-5 lg:p-6 space-y-5 overflow-y-auto ${className}`.trim()}>
+        <aside className={`rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-black p-4 lg:p-5 space-y-4 overflow-y-auto ${className}`.trim()}>
             <div className="flex items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Epistemic Verification</h3>
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Inspector</h3>
                 <div className="flex items-center gap-2">
                     <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${style.chip}`}>
                         <VerdictIcon className="w-3.5 h-3.5" />
@@ -296,59 +342,70 @@ export function ClaimInspectorPanel({ claim, onClose, className = "" }: Props) {
                 </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/20 p-4 space-y-2">
-                <p className="text-sm leading-relaxed text-slate-800 dark:text-slate-100">{claim.claim_text}</p>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                    Confidence: {(confidence * 100).toFixed(0)}%
-                </div>
-                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                    {reasoning}
-                </p>
+            <div className="inline-flex rounded-md border border-slate-200 dark:border-white/10 p-0.5 bg-slate-100 dark:bg-white/5">
+                {tabs.map((tab) => (
+                    <button
+                        key={tab.key}
+                        onClick={() => setActiveTab(tab.key)}
+                        className={`px-2.5 py-1 text-xs font-medium rounded ${activeTab === tab.key ? 'bg-white dark:bg-black text-slate-900 dark:text-slate-100 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
+                    >
+                        {tab.label}
+                    </button>
+                ))}
             </div>
 
-            {Object.keys(facetStatus).length > 0 ? (
-                <div>
-                    <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Claim facets</div>
-                    <div className="space-y-1.5">
-                        {Object.entries(facetStatus).map(([facet, status]) => (
-                            <div key={facet} className="flex items-center justify-between rounded-md border border-slate-200 dark:border-white/10 px-2.5 py-1.5 text-xs">
-                                <span className="text-slate-700 dark:text-slate-200">{FACET_LABELS[facet] || facet}</span>
-                                <span className="text-slate-500 dark:text-slate-400">
-                                    {status === "SUPPORTED" ? "Supported ✅" : status === "CONTRADICTED" ? "Contradicted ❌" : "Unknown ?"}
-                                </span>
+            {activeTab === "VERDICT" ? (
+                <div className="space-y-4">
+                    <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/20 p-4 space-y-2">
+                        <p className="text-sm leading-relaxed text-slate-800 dark:text-slate-100">{claim.claim_text}</p>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">Confidence: {(confidence * 100).toFixed(0)}%</div>
+                        <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">{reasoning}</p>
+                    </div>
+
+                    {Object.keys(facetStatus).length > 0 ? (
+                        <div>
+                            <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Claim facets</div>
+                            <div className="space-y-1.5">
+                                {Object.entries(facetStatus).map(([facet, status]) => (
+                                    <div key={facet} className="flex items-center justify-between rounded-md border border-slate-200 dark:border-white/10 px-2.5 py-1.5 text-xs">
+                                        <span className="text-slate-700 dark:text-slate-200">{FACET_LABELS[facet] || facet}</span>
+                                        <span className="text-slate-500 dark:text-slate-400">
+                                            {status === "SUPPORTED" ? "Supported ✅" : status === "CONTRADICTED" ? "Contradicted ❌" : "Unknown ?"}
+                                        </span>
+                                    </div>
+                                ))}
                             </div>
-                        ))}
-                    </div>
-                </div>
-            ) : null}
-
-            {hallucinations.length > 0 ? (
-                <div className="space-y-2">
-                    <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">Hallucination Flags</div>
-                    {hallucinations.map((flag: any, index: number) => (
-                        <div key={`${flag.hallucination_type}-${index}`} className="rounded-lg border border-rose-200 dark:border-rose-700/50 bg-rose-50 dark:bg-rose-900/20 p-3">
-                            <div className="text-xs font-semibold text-rose-700 dark:text-rose-300">{flag.hallucination_type || "Hallucination"}</div>
-                            <div className="text-xs text-rose-700/90 dark:text-rose-200/90 mt-1">{flag.reason}</div>
                         </div>
-                    ))}
+                    ) : null}
+
+                    {hallucinations.length > 0 ? (
+                        <div className="space-y-2">
+                            <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">Hallucination flags</div>
+                            {hallucinations.map((flag: any, index: number) => (
+                                <div key={`${flag.hallucination_type}-${index}`} className="rounded-lg border border-rose-200 dark:border-rose-700/50 bg-rose-50 dark:bg-rose-900/20 p-3">
+                                    <div className="text-xs font-semibold text-rose-700 dark:text-rose-300">{flag.hallucination_type || "Hallucination"}</div>
+                                    <div className="text-xs text-rose-700/90 dark:text-rose-200/90 mt-1">{flag.reason}</div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : null}
+
+                    {contradictedBy.length > 0 ? (
+                        <div>
+                            <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Contradicted by</div>
+                            <div className="flex flex-wrap gap-2">
+                                {contradictedBy.map((id) => (
+                                    <span key={id} className="rounded-md bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 px-2 py-1 text-[11px] font-mono">
+                                        {id}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    ) : null}
                 </div>
             ) : null}
 
-            {contradictedBy.length > 0 ? (
-                <div>
-                    <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Contradicted By</div>
-                    <div className="flex flex-wrap gap-2">
-                        {contradictedBy.map((id) => (
-                            <span key={id} className="rounded-md bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 px-2 py-1 text-[11px] font-mono">
-                                {id}
-                            </span>
-                        ))}
-                    </div>
-                </div>
-            ) : null}
-
-            <details open className="space-y-3">
-                <summary className="cursor-pointer text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">Evidence</summary>
+            {activeTab === "EVIDENCE" ? (
                 <div className="space-y-2">
                     {evidenceItems.map((item) => (
                         <EvidenceCard key={item.evidenceId || item.reactKey} item={item} />
@@ -357,7 +414,24 @@ export function ClaimInspectorPanel({ claim, onClose, className = "" }: Props) {
                         <p className="text-xs text-slate-500 dark:text-slate-400">No evidence items available.</p>
                     ) : null}
                 </div>
-            </details>
+            ) : null}
+
+            {activeTab === "DEBUG" && explainabilityMode === "EXPERT" ? (
+                <div className="space-y-3">
+                    <div>
+                        <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Verification payload</div>
+                        <pre className="text-[11px] whitespace-pre-wrap break-words rounded-md border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black p-2.5 text-slate-700 dark:text-slate-300">
+                            {JSON.stringify(claim.verification || {}, null, 2)}
+                        </pre>
+                    </div>
+                    <div>
+                        <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Evidence status</div>
+                        <pre className="text-[11px] whitespace-pre-wrap break-words rounded-md border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black p-2.5 text-slate-700 dark:text-slate-300">
+                            {JSON.stringify(claim.evidence_status || {}, null, 2)}
+                        </pre>
+                    </div>
+                </div>
+            ) : null}
         </aside>
     )
 }

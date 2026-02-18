@@ -223,9 +223,9 @@ class TestClaimVerifierFacetReliability(unittest.TestCase):
             }
         )
         claim = _base_claim(
-            "OpenAI is headquartered in San Francisco.",
+            "OpenAI is headquartered in California.",
             "headquartered in",
-            "San Francisco",
+            "California",
             claim_type="RELATION",
         )
         claim["evidence"]["wikidata"] = [

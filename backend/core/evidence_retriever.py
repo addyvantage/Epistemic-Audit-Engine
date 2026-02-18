@@ -58,6 +58,9 @@ class EvidenceRetriever:
         """
         Main entry: Appends evidence to linked claims.
         """
+        pipeline_config = input_data.get("pipeline_config", {}) or {}
+        performance = pipeline_config.get("performance", {}) or {}
+
         # Phase 1: Tier 1 Retrieval (Primary) which may pre-solve queries
         primary_ev_map = self.primary_retriever.retrieve_evidence(input_data.get("claims", []))
         
@@ -67,7 +70,7 @@ class EvidenceRetriever:
                 cid = claim.get("claim_id")
                 p_docs = primary_ev_map.get(cid, [])
                 
-                processed_claim = self._process_claim(claim, p_docs)
+                processed_claim = self._process_claim(claim, p_docs, performance=performance)
                 output_claims.append(processed_claim)
             except Exception as e:
                 logger.exception("Evidence retrieval failed for claim_id=%s", claim.get("claim_id"))
@@ -77,11 +80,21 @@ class EvidenceRetriever:
                 
         return {"claims": output_claims}
 
-    def _process_claim(self, claim: Dict[str, Any], primary_docs: List[Dict[str, Any]] = []) -> Dict[str, Any]:
+    def _process_claim(
+        self,
+        claim: Dict[str, Any],
+        primary_docs: Optional[List[Dict[str, Any]]] = None,
+        performance: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         subj_ent = claim.get("subject_entity", {})
         obj_ent = claim.get("object_entity", {})
         predicate = claim.get("predicate", "").lower()
         primary_docs = [self._ensure_primary_evidence_id(dict(doc)) for doc in (primary_docs or [])]
+        performance = performance or {}
+        wikidata_timeout_s = float(performance.get("wikidata_timeout_s") or 5.0)
+        wikipedia_timeout_s = float(performance.get("wikipedia_timeout_s") or 8.0)
+        self.wikidata_retriever.request_timeout_s = wikidata_timeout_s
+        self.passage_retriever.request_timeout_s = wikipedia_timeout_s
         
         wikidata_ev = []
         wikipedia_ev = []
@@ -108,6 +121,9 @@ class EvidenceRetriever:
 
         if query_qid:
             p_ids = self._resolve_wikidata_properties(predicate, claim.get("claim_text", ""))
+            property_limit = int(performance.get("wikidata_property_limit") or 0)
+            if property_limit > 0:
+                p_ids = p_ids[:property_limit]
             if p_ids:
                 matches = self.wikidata_retriever.retrieve_structured_evidence(query_qid, p_ids, claim)
                 if matches:
@@ -120,9 +136,27 @@ class EvidenceRetriever:
         
         # 2. Wikipedia Retrieval (Tier 2 - Narrative)
         wiki_url = subj_ent.get("sources", {}).get("wikipedia")
-        if subj_ent.get("source_status", {}).get("wikipedia") == "VERIFIED" and wiki_url:
+        skip_wikipedia_if_wikidata = bool(performance.get("demo_skip_wikipedia_if_wikidata", False))
+        numeric_or_temporal_only = bool(performance.get("demo_wikipedia_numeric_or_temporal_only", False))
+        claim_text = claim.get("claim_text", "") or ""
+        has_numeric_or_temporal_signal = bool(re.search(r"\b(1\d{3}|20\d{2})\b|\d+(?:\.\d+)?", claim_text))
+
+        should_skip_wikipedia = False
+        if skip_wikipedia_if_wikidata and status["wikidata"] == "FOUND":
+            should_skip_wikipedia = True
+        if numeric_or_temporal_only and not has_numeric_or_temporal_signal:
+            should_skip_wikipedia = True
+
+        if should_skip_wikipedia:
+            status["wikipedia"] = "SKIPPED_DEMO"
+        elif subj_ent.get("source_status", {}).get("wikipedia") == "VERIFIED" and wiki_url:
             wiki_query = self._build_wikipedia_query(claim, subj_ent, obj_ent)
-            passages = self.passage_retriever.extract_passages(wiki_url, wiki_query)
+            max_passages = int(performance.get("wikipedia_max_passages") or 2)
+            passages = self.passage_retriever.extract_passages(
+                wiki_url,
+                wiki_query,
+                max_passages=max(1, max_passages),
+            )
             
             if passages:
                 normalized_passages = []

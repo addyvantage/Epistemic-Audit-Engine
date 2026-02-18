@@ -1,6 +1,7 @@
 import requests
 import time
 import re
+import copy
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from .entity_models import ResolvedEntity, EntityCandidate
 
@@ -17,6 +18,12 @@ class EntityLinker:
         })
         # Optional document-level entity context for coreference resolution
         self._context: Optional['EntityContext'] = None
+        self._request_timeout_s = 5.0
+        self._grok_head_timeout_s = 2.0
+        self._resolved_cache: Dict[str, ResolvedEntity] = {}
+        self._use_resolution_cache = False
+        self._fast_mode = False
+        self._candidate_limit = 5
 
     def set_context(self, context: 'EntityContext') -> None:
         """
@@ -38,6 +45,12 @@ class EntityLinker:
         """
         Main entry point. Takes Phase 1 output, returns Phase 2 output with groundings.
         """
+        performance = (input_data.get("pipeline_config") or {}).get("performance", {}) or {}
+        self._request_timeout_s = float(performance.get("entity_timeout_s") or 5.0)
+        self._grok_head_timeout_s = float(performance.get("grok_head_timeout_s") or 2.0)
+        self._use_resolution_cache = int(performance.get("max_claims") or 0) > 0
+        self._fast_mode = self._use_resolution_cache
+        self._candidate_limit = 3 if self._fast_mode else 5
         claims = input_data.get("claims", [])
         linked_claims = []
         
@@ -80,9 +93,30 @@ class EntityLinker:
         if not text or len(text.strip()) < 2:
              return self._create_unresolved(text, "Text too short")
 
+        if self._fast_mode and context_type == "OBJECT" and self._is_likely_non_entity_object(text):
+            return self._create_unresolved(text, "Fast mode: object skipped (non-entity heuristic)")
+
+        cache_key = f"{context_type}:{text.strip().lower()}"
+        is_generic_ref = self._is_generic_reference(text)
+        if self._use_resolution_cache and (not is_generic_ref) and cache_key in self._resolved_cache:
+            cached = self._resolved_cache[cache_key]
+            return ResolvedEntity(
+                text=text,
+                entity_id=cached.entity_id,
+                canonical_name=cached.canonical_name,
+                entity_type=cached.entity_type,
+                sources=copy.deepcopy(cached.sources),
+                confidence=cached.confidence,
+                resolution_status=cached.resolution_status,
+                source_status=copy.deepcopy(cached.source_status),
+                requires_binding=cached.requires_binding,
+                candidates_log=copy.deepcopy(cached.candidates_log),
+                decision_reason=cached.decision_reason,
+            )
+
         # Check for coreference resolution first for generic references
         # This runs before expensive API calls if the text matches generic patterns
-        if self._context and self._is_generic_reference(text):
+        if self._context and is_generic_ref:
             coref_result = self._context.resolve_generic(text, context_type)
             if coref_result:
                 # Apply confidence discount for indirect resolution (10% reduction)
@@ -121,7 +155,10 @@ class EntityLinker:
         candidates = self._fetch_candidates_wikidata(query)
         
         if not candidates:
-            return self._create_unresolved(text, "No candidates found")
+            unresolved = self._create_unresolved(text, "No candidates found")
+            if self._use_resolution_cache and (not is_generic_ref):
+                self._resolved_cache[cache_key] = unresolved
+            return unresolved
             
         # 2. Scoring
         scored_candidates = self._score_candidates(candidates, query)
@@ -146,7 +183,14 @@ class EntityLinker:
              requires_binding = (ent_type == "ROLE")
              
              # 4. Source Verification
-             source_status, verified_sources = self._verify_sources(best_candidate)
+             if self._fast_mode and context_type == "OBJECT":
+                 source_status = {"wikidata": "VERIFIED", "wikipedia": "UNVERIFIED", "grokipedia": "SKIPPED"}
+                 verified_sources = {
+                     "wikidata": best_candidate.id,
+                     "wikipedia": "",
+                 }
+             else:
+                 source_status, verified_sources = self._verify_sources(best_candidate)
              
              status = "RESOLVED"
              if decision_reason == "High confidence famous entity":
@@ -156,7 +200,7 @@ class EntityLinker:
                  decision_reason = "Contextual Hard Disambiguation"
 
              # Create final object
-             return ResolvedEntity(
+             resolved = ResolvedEntity(
                  text=text,
                  entity_id=best_candidate.id,
                  canonical_name=best_candidate.label,
@@ -169,6 +213,9 @@ class EntityLinker:
                  candidates_log=candidates_log,
                  decision_reason=decision_reason
              )
+             if self._use_resolution_cache and (not is_generic_ref):
+                 self._resolved_cache[cache_key] = resolved
+             return resolved
         else:
              # Direct resolution failed - try coreference as fallback
              if self._context and not self._is_generic_reference(text):
@@ -179,7 +226,10 @@ class EntityLinker:
                  # Already tried coreference at the start, so this is truly unresolved
                  pass
 
-             return self._create_unresolved(text, decision_reason, candidates_log)
+             unresolved = self._create_unresolved(text, decision_reason, candidates_log)
+             if self._use_resolution_cache and (not is_generic_ref):
+                 self._resolved_cache[cache_key] = unresolved
+             return unresolved
 
     def _clean_query(self, text: str) -> str:
         """
@@ -205,10 +255,10 @@ class EntityLinker:
             "search": query,
             "language": "en",
             "format": "json",
-            "limit": 5
+            "limit": self._candidate_limit
         }
         try:
-            resp = self.session.get(self.WIKIDATA_API_URL, params=params, timeout=5)
+            resp = self.session.get(self.WIKIDATA_API_URL, params=params, timeout=self._request_timeout_s)
             data = resp.json()
             
             candidates = []
@@ -322,7 +372,10 @@ class EntityLinker:
 
         # 2. Check Grokipedia
         grok_url = sources.get("grokipedia", "")
-        if self._verify_grokipedia(grok_url):
+        if self._fast_mode:
+            status["grokipedia"] = "SKIPPED"
+            sources.pop("grokipedia", None)
+        elif self._verify_grokipedia(grok_url):
             status["grokipedia"] = "VERIFIED"
         else:
             status["grokipedia"] = "ABSENT"
@@ -342,7 +395,7 @@ class EntityLinker:
                 "sitefilter": "enwiki",
                 "format": "json"
             }
-            resp = self.session.get(self.WIKIDATA_API_URL, params=params, timeout=5)
+            resp = self.session.get(self.WIKIDATA_API_URL, params=params, timeout=self._request_timeout_s)
             data = resp.json()
             entity = data.get("entities", {}).get(q_id, {})
             sitelinks = entity.get("sitelinks", {})
@@ -361,7 +414,7 @@ class EntityLinker:
         if not url: return False
         try:
             # Short timeout, don't block
-            resp = self.session.head(url, timeout=2)
+            resp = self.session.head(url, timeout=self._grok_head_timeout_s)
             return resp.status_code == 200
         except Exception:
             return False
@@ -403,6 +456,24 @@ class EntityLinker:
             "the city", "the country", "the state", "the region",
         ]
         return text_lower in generic_patterns
+
+    def _is_likely_non_entity_object(self, text: str) -> bool:
+        t = (text or "").strip()
+        if not t:
+            return True
+
+        if re.search(r"[\d$€£%]", t):
+            return True
+
+        tokens = re.findall(r"[A-Za-z]+", t)
+        if len(tokens) >= 6:
+            return True
+
+        capitalized = sum(1 for tok in tokens if tok and tok[0].isupper())
+        if tokens and capitalized == 0:
+            return True
+
+        return False
 
     def _create_unresolved(self, text: str, reason: str, log: List = []) -> ResolvedEntity:
         """

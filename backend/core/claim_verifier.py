@@ -266,6 +266,7 @@ class ClaimVerifier:
                     and is_canonical_biographical
                     and self._is_canonical_support_compatible(claim, ev)
                     and self._canonical_override_allowed(claim, prop_id)
+                    and self._is_support_facet_compatible(asserted_facets, prop_id)
                 ):
                     # For canonical facts, we trust the Wikidata property even without
                     # strict object/temporal alignment. The property value IS the truth.
@@ -288,8 +289,9 @@ class ClaimVerifier:
                         temporal_match=t_match,
                         claim_is_temporal=claim_is_temporal,
                     )
+                    facet_compatible = self._is_support_facet_compatible(asserted_facets, prop_id)
 
-                    if is_positive_match:
+                    if is_positive_match and facet_compatible:
                         # Full structured support
                         supporting_ids.append(ev.get("evidence_id"))
                         has_direct_support = True
@@ -299,7 +301,7 @@ class ClaimVerifier:
                             best_support_score = CONFIDENCE_CAP_STRUCTURED
                             best_evidence_item = ev
                             best_evidence_item["support_type"] = "STRUCTURED_INDEPENDENT"
-                    elif o_match is None and t_match is None:
+                    elif o_match is None and t_match is None and not asserted_facets:
                         # Subject and predicate match, but can't verify object/temporal
                         # This is still supportive for general facts
                         if prop_id not in self.TEMPORAL_PROPS:
@@ -440,6 +442,7 @@ class ClaimVerifier:
                         ev.get("property") == target_prop
                         and self._is_canonical_support_compatible(claim, ev)
                         and self._canonical_override_allowed(claim, target_prop)
+                        and self._is_support_facet_compatible(asserted_facets, target_prop)
                     ):
                          # Attach Record
                          supporting_ids.append(ev.get("evidence_id"))
@@ -693,6 +696,19 @@ class ClaimVerifier:
             facets.add("TEMPORAL_GENERIC")
         return facets
 
+    def _is_support_facet_compatible(self, asserted_facets: Set[str], prop_id: str) -> bool:
+        if not asserted_facets:
+            return True
+
+        mapped_facet = self._facet_for_property(prop_id)
+        if mapped_facet and mapped_facet in asserted_facets:
+            return True
+
+        if prop_id in self.TEMPORAL_PROPS and "TEMPORAL_GENERIC" in asserted_facets:
+            return True
+
+        return False
+
     def _is_positive_structured_match(
         self,
         claim: Dict[str, Any],
@@ -805,6 +821,7 @@ class ClaimVerifier:
         positive_props: Set[str] = set()
         claim_object = self._extract_claim_object(claim)
         claim_is_temporal = (claim.get("claim_type") == "TEMPORAL") or self.has_temporal_signal(claim)
+        asserted_facets = self.extract_claim_facets(claim)
 
         for ev in wikidata_evidence:
             prop = ev.get("property")
@@ -823,15 +840,25 @@ class ClaimVerifier:
                 temporal_match=t_match,
                 claim_is_temporal=claim_is_temporal,
             )
-            if is_positive:
+            if is_positive and self._is_support_facet_compatible(asserted_facets, prop):
                 positive_props.add(prop)
                 continue
 
-            if prop in self.TEMPORAL_PROPS and claim_object and claim_is_temporal and self._temporal_compatible(claim_object, value):
+            if (
+                prop in self.TEMPORAL_PROPS
+                and claim_object
+                and claim_is_temporal
+                and self._temporal_compatible(claim_object, value)
+                and self._is_support_facet_compatible(asserted_facets, prop)
+            ):
                 positive_props.add(prop)
                 continue
 
-            if prop in {"P19", "P20", "P159"} and self._is_place_compatible_with_evidence(claim, ev):
+            if (
+                prop in {"P19", "P20", "P159"}
+                and self._is_place_compatible_with_evidence(claim, ev)
+                and self._is_support_facet_compatible(asserted_facets, prop)
+            ):
                 positive_props.add(prop)
 
         return positive_props

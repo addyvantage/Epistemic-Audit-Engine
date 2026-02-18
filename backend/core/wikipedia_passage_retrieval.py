@@ -1,5 +1,6 @@
 import logging
 import re
+import copy
 from html import unescape
 from typing import List, Dict, Optional, Any
 from urllib.parse import quote, urlparse, parse_qs
@@ -29,6 +30,7 @@ class WikipediaPassageRetriever:
         self.session.headers.update({
             "User-Agent": "EpistemicAuditEngine/1.0 (Research Project)"
         })
+        self.request_timeout_s = 8.0
 
         try:
             self.nlp = spacy.load("en_core_web_sm")
@@ -42,6 +44,9 @@ class WikipediaPassageRetriever:
                 self.model = SentenceTransformer("all-MiniLM-L6-v2")
             except Exception as exc:
                 logger.warning("Failed to load SBERT model: %s", exc)
+        self._parse_cache: Dict[str, Dict[str, Any]] = {}
+        self._revision_cache: Dict[str, Optional[int]] = {}
+        self._passage_cache: Dict[str, List[Dict[str, Any]]] = {}
 
     def extract_passages(self, wiki_url: str, claim_text: str, max_passages: int = 2) -> List[Dict[str, Any]]:
         """
@@ -51,6 +56,10 @@ class WikipediaPassageRetriever:
         title = self._extract_title_from_url(wiki_url)
         if not title:
             return []
+        cache_key = f"{title}|{claim_text.strip().lower()}|{int(max_passages)}"
+        cached = self._passage_cache.get(cache_key)
+        if cached is not None:
+            return copy.deepcopy(cached)
 
         parsed = self._fetch_parsed_page(title)
         if not parsed.get("html"):
@@ -86,6 +95,7 @@ class WikipediaPassageRetriever:
                 "explanation": explanation,
             })
 
+        self._passage_cache[cache_key] = copy.deepcopy(evidence_items)
         return evidence_items
 
     def _extract_title_from_url(self, url: str) -> Optional[str]:
@@ -102,6 +112,9 @@ class WikipediaPassageRetriever:
             return None
 
     def _fetch_parsed_page(self, title: str) -> Dict[str, Any]:
+        cached = self._parse_cache.get(title)
+        if cached is not None:
+            return cached
         params = {
             "action": "parse",
             "page": title,
@@ -110,17 +123,21 @@ class WikipediaPassageRetriever:
             "redirects": 1,
         }
         try:
-            response = self.session.get(self.API_URL, params=params, timeout=8)
+            response = self.session.get(self.API_URL, params=params, timeout=self.request_timeout_s)
             response.raise_for_status()
             data = response.json().get("parse", {})
             html = data.get("text", {}).get("*", "")
             sections = data.get("sections", [])
-            return {"html": html, "sections": sections}
+            payload = {"html": html, "sections": sections}
+            self._parse_cache[title] = payload
+            return payload
         except Exception as exc:
             logger.warning("Failed parse fetch for '%s': %s", title, exc)
             return {"html": "", "sections": []}
 
     def _fetch_revision_id(self, title: str) -> Optional[int]:
+        if title in self._revision_cache:
+            return self._revision_cache[title]
         params = {
             "action": "query",
             "prop": "revisions",
@@ -130,7 +147,7 @@ class WikipediaPassageRetriever:
             "redirects": 1,
         }
         try:
-            response = self.session.get(self.API_URL, params=params, timeout=8)
+            response = self.session.get(self.API_URL, params=params, timeout=self.request_timeout_s)
             response.raise_for_status()
             pages = response.json().get("query", {}).get("pages", {})
             for page in pages.values():
@@ -138,9 +155,12 @@ class WikipediaPassageRetriever:
                 if not revisions:
                     continue
                 rev = revisions[0]
-                return rev.get("revid")
+                self._revision_cache[title] = rev.get("revid")
+                return self._revision_cache[title]
         except Exception:
+            self._revision_cache[title] = None
             return None
+        self._revision_cache[title] = None
         return None
 
     def _extract_sentence_records(self, html: str, sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

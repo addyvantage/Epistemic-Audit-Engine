@@ -56,6 +56,7 @@ export function EpistemicHighlight({ children, onClick, onMouseEnter, onMouseLea
             tabIndex={0}
             role="button"
             aria-label={getAriaLabel()}
+            data-claim-id={claimId}
             className={`
                 relative isolate 
                 px-0.5 rounded-sm 

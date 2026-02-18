@@ -18,6 +18,7 @@ class WikidataRetriever:
         })
         self.entity_cache = {}
         self.place_containment_cache: Dict[str, Dict[str, List[str]]] = {}
+        self.request_timeout_s = 5.0
 
     def retrieve_structured_evidence(self, q_id: str, p_ids: List[str], claim: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
@@ -154,7 +155,7 @@ class WikidataRetriever:
             "languages": "en",
             "format": "json"
         }
-        resp = self.session.get(self.WIKIDATA_API_URL, params=params, timeout=5)
+        resp = self.session.get(self.WIKIDATA_API_URL, params=params, timeout=self.request_timeout_s)
         data = resp.json()
         entity = data.get("entities", {}).get(q_id, {})
         self.entity_cache[q_id] = entity
