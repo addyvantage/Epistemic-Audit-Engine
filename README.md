@@ -1,81 +1,67 @@
 # Epistemic Audit Engine
-Claim-level reliability auditing for LLM-generated text using evidence grounding and epistemic risk scoring.
+Claim-level reliability auditing for LLM-generated text with evidence grounding and epistemic risk scoring.
 
 ---
 
-## Screenshot
-> Placeholder: add an audit workspace screenshot here (for example: `docs/images/audit-ui.png`).
+## Why this exists
+LLM outputs can be fluent and confident while still containing unsupported or contradictory claims. In practice, reviewers need more than a single “good/bad” score: they need to inspect **which claims are grounded**, **which are uncertain**, and **why**.
+
+Epistemic Audit Engine is built for that workflow.
+
+- It audits generated text at the **claim level**.
+- It links each claim to available evidence.
+- It aggregates claim outcomes into an overall risk signal.
+
+This is an audit aid, not an oracle.
 
 ---
 
-## Table of Contents
-- [What This System Does](#what-this-system-does)
-- [Why It Exists](#why-it-exists)
-- [System Architecture](#system-architecture)
-- [Verification Pipeline](#verification-pipeline)
-- [Evidence Sources](#evidence-sources)
-- [Verdicts & Risk Outputs](#verdicts--risk-outputs)
-- [Input Interface (UX Rules)](#input-interface-ux-rules)
-- [Running Locally](#running-locally)
-- [Health Check](#health-check)
-- [Example Usage](#example-usage)
-- [Repository Layout](#repository-layout)
-- [Development Notes](#development-notes)
-- [Research Dataset & Figures](#research-dataset--figures)
-- [Quick Research Run (531 synthetic audits)](#quick-research-run-531-synthetic-audits)
-- [Limitations](#limitations)
-- [Roadmap](#roadmap)
-- [License](#license)
+## What it does
+For each audit request, the backend pipeline runs:
+
+1. **Claim Extraction**: split text into atomic claims.
+2. **Entity Linking**: resolve subjects/objects to canonical entities where possible.
+3. **Evidence Retrieval**: gather structured and narrative evidence.
+4. **Claim Verification**: assign epistemic verdicts per claim.
+5. **Risk Aggregation**: compute document-level risk outputs.
 
 ---
 
-## What This System Does
-Epistemic Audit Engine evaluates model output at the **claim level**.
+## What you get
+After running the research pipeline you get two artifact classes:
 
-For each submitted text, the system:
-- extracts atomic claims,
-- links entities to canonical references,
-- retrieves external evidence,
-- verifies each claim,
-- aggregates claim outcomes into risk outputs.
+1. **Append-only run dataset**
+- `paper/data/audit_runs.jsonl`
 
-This makes review workflows more transparent: users can inspect which claims are supported, contradicted, or unresolved.
+2. **Figure set (14 analyses, each PNG + PDF)**
+- `figures/fig01_...` through `figures/fig14_...`
 
 ---
 
-## Why It Exists
-LLM outputs can sound confident while mixing correct facts with unsupported statements.
-
-This creates **epistemic risk** in research, education, and analysis contexts, where users need to distinguish:
-- what is evidence-backed,
-- what is uncertain,
-- what is contradicted.
-
-**This is an audit aid, not an oracle.**
-
----
-
-## System Architecture
-The application is split between a Next.js frontend and a FastAPI backend pipeline.
-
+## System architecture
 ```text
-[Browser UI (/audit)]
-         |
-         v
-[Next.js API Proxy]
-  - /api/audit
-  - /api/health
-         |
-         v
-[FastAPI Backend]
+[Browser UI: /audit]
+        |
+        v
+[Next.js frontend]
+  - /api/audit  (proxy)
+  - /api/health (proxy)
+        |
+        v
+[FastAPI backend: backend/app.py]
   - POST /audit
   - GET  /health
-         |
-         v
-[Verification Pipeline]
-         |
-         v
-[Risk Outputs]
+        |
+        v
+[Verification pipeline]
+  - Claim Extraction
+  - Entity Linking
+  - Evidence Retrieval
+  - Claim Verification
+  - Risk Aggregation
+        |
+        v
+[Risk outputs]
   - overall_risk
   - hallucination_score
   - summary
@@ -84,70 +70,79 @@ The application is split between a Next.js frontend and a FastAPI backend pipeli
 
 ---
 
-## Verification Pipeline
-### 1) Claim Extraction
-Converts input text into atomic, auditable claim units.
-
-### 2) Entity Linking
-Resolves claim entities to canonical identifiers when possible (for structured grounding and disambiguation).
-
-### 3) Evidence Retrieval
-Collects candidate evidence from structured and narrative sources.
-
-### 4) Claim Verification
-Evaluates alignment and contradiction signals to assign a verdict per claim.
-
-### 5) Risk Aggregation
-Combines claim-level results into document-level risk outputs.
-
----
-
-## Evidence Sources
-- **Wikidata (structured KG evidence):**
-  - Entity/property-based evidence (triples, property IDs such as `P571`, `P159`, etc.).
-  - Used for structured support and contradiction checks.
-- **Wikipedia (narrative passages):**
-  - Sentence-level narrative evidence and source links.
-
-Evidence retrieval quality and source coverage influence verification outcomes.  
-**Evidence availability affects verdict confidence.**
+## Key features
+- Claim-level auditing instead of document-only scoring.
+- Structured evidence grounding via Wikidata properties/entities.
+- Narrative passage retrieval via Wikipedia.
+- Verdict classes:
+  - `SUPPORTED`
+  - `PARTIALLY_SUPPORTED`
+  - `REFUTED`
+  - `UNCERTAIN`
+  - `INSUFFICIENT_EVIDENCE`
+- Always-on backend logging for every `/audit` call to JSONL.
+- Synthetic dataset generation with deterministic seed controls.
+- End-to-end figure pipeline generating 14 research figures in PNG/PDF.
+- Root one-command research runner: `scripts/run_research.sh`.
 
 ---
 
-## Verdicts & Risk Outputs
-Claim-level verdicts:
-- `SUPPORTED`
-- `REFUTED`
-- `UNCERTAIN`
-- `INSUFFICIENT_EVIDENCE`
-- `PARTIALLY_SUPPORTED`
+## API
 
-Top-level `/audit` response shape:
-- `overall_risk`: coarse label (`LOW`, `MEDIUM`, `HIGH`)
-- `hallucination_score`: normalized scalar risk estimate
-- `summary`: aggregate counts
-- `claims`: detailed claim-level results
+### `GET /health`
+Backend health endpoint.
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Expected shape:
+
+```json
+{
+  "status": "ok",
+  "pipeline_ready": true,
+  "pid": 12345,
+  "uptime_s": 12.34
+}
+```
+
+### `POST /audit`
+Audit a text payload.
+
+```bash
+curl -X POST http://127.0.0.1:8000/audit \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Microsoft was founded in 1975.","mode":"demo"}'
+```
+
+High-level response shape:
+
+```json
+{
+  "overall_risk": "LOW | MEDIUM | HIGH",
+  "hallucination_score": 0.0,
+  "summary": {},
+  "claims": []
+}
+```
+
+### Logging behavior
+Every `/audit` request is logged server-side (backend) to:
+
+- `paper/data/audit_runs.jsonl`
+
+Logging is append-only and failure-tolerant (logging errors do not break `/audit`).
 
 ---
 
-## Input Interface (UX Rules)
-The audit input layer enforces deterministic behavior:
-- Press **Enter** to submit.
-- Press **Shift+Enter** to insert newline.
-- Hard **5000-character cap** on input.
-- Overflow paste is clamped to 5000 characters.
-- Inline toast feedback appears on overflow.
-- Keyboard and button share one submit path.
-
----
-
-## Running Locally
+## Quickstart (Local) 🚀
 
 ### Prerequisites
 - Python 3.9+
 - Node.js 18+
 
-### Backend Setup
+### Backend setup
 ```bash
 python -m venv .venv
 source .venv/bin/activate
@@ -155,208 +150,226 @@ pip install -r backend/requirements.txt
 ```
 
 Run backend:
+
 ```bash
 .venv/bin/python -m uvicorn app:app --app-dir backend --reload --host 127.0.0.1 --port 8000
 ```
 
-### Frontend Setup
+### Frontend setup
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
----
+Open:
+- Audit UI: `http://localhost:3000/audit`
 
-### Run Full Stack (Single Command)  ⭐ REQUIRED
+### Full stack command
 ```bash
 (for p in 3000 3001 8000; do lsof -ti :$p | xargs -r kill -9; done; pkill -f "next dev" || true; pkill -f "uvicorn" || true; rm -f frontend/.next/dev/lock; sleep 1; (.venv/bin/python -m uvicorn app:app --app-dir backend --reload --host 127.0.0.1 --port 8000) & (cd frontend && npm run dev))
 ```
 
-Open http://localhost:3000/audit
-
 ---
 
-## Health Check
-```bash
-curl http://127.0.0.1:8000/health
-```
-
----
-
-## Example Usage
-### Example Input Text
-```text
-Google was founded in 1998 by Larry Page and Sergey Brin. The company is headquartered in Mountain View, California. Alphabet reports annual revenue in public filings.
-```
-
-### Example POST Request
-```bash
-curl -X POST http://127.0.0.1:8000/audit \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "Google was founded in 1998 by Larry Page and Sergey Brin. The company is headquartered in Mountain View, California.",
-    "mode": "demo"
-  }'
-```
-
-### Example Output JSON Shape
-```json
-{
-  "overall_risk": "LOW",
-  "hallucination_score": 0.21,
-  "summary": {
-    "total_asserted_claims": 2,
-    "supported": 1,
-    "partially_supported": 0,
-    "refuted": 0,
-    "uncertain": 1,
-    "insufficient": 0
-  },
-  "claims": [
-    {
-      "claim_id": "c1",
-      "claim_text": "Google was founded in 1998 by Larry Page and Sergey Brin.",
-      "verification": {
-        "verdict": "SUPPORTED",
-        "confidence": 0.9,
-        "reasoning": "Matched structured evidence."
-      },
-      "evidence": {
-        "wikidata": [],
-        "wikipedia": [],
-        "primary_document": []
-      }
-    }
-  ]
-}
-```
-
----
-
-## Repository Layout
-```text
-.
-├── backend/
-│   ├── app.py
-│   ├── core/
-│   ├── pipeline/
-│   └── requirements.txt
-├── frontend/
-│   ├── app/
-│   │   ├── api/
-│   │   │   ├── audit/route.ts
-│   │   │   └── health/route.ts
-│   │   └── audit/page.tsx
-│   └── components/
-├── tests/
-├── package.json
-└── README.md
-```
-
----
-
-## Development Notes
-- The UI supports **Demo** and **Research** modes.
-  - Demo mode uses a tighter runtime budget.
-  - Research mode uses deeper retrieval/verification settings.
-- Next.js may fall back to **port 3001** if port 3000 is occupied.
-- Frontend API requests are proxied through:
-  - `/api/audit`
-  - `/api/health`
-
----
-
-## Research Dataset & Figures
-
-### Always-on audit run logging
-- Every backend `/audit` call appends one JSONL row to:
-  - `paper/data/audit_runs.jsonl`
-- Logging is server-side (FastAPI) and includes:
-  - `run_id`, `ts_iso`, `mode`
-  - `input_text`, `input_chars`, `input_sha256`
-  - `pipeline_version` (from `VERSION` if present)
-  - `result` (full API response payload)
-  - mirrored top-level: `overall_risk`, `hallucination_score`, `summary`
-  - `timings_ms` (from `debug_timings_ms` when available)
-- Appends are failure-tolerant and use append + flush + fsync; logging failures do not break `/audit`.
-
-### Optional custom testcase file
-If present, `paper/data/custom_testcases.jsonl` is included by the generator.
-
-Each line should be one JSON object:
-
-```json
-{"id":"case-001","domain":"tech","mode":"research","text":"Your audit text here."}
-```
-
-Fields:
-- `id`: optional identifier
-- `domain`: optional domain label
-- `mode`: optional (`demo` or `research`)
-- `text`: required input text
-
-### Synthetic run generation
-Generate synthetic runs (plus optional custom testcases) with:
-
-```bash
-.venv/bin/python paper/scripts/generate_audit_runs.py
-```
-
-Configurable env vars:
-- `EPI_SYNTH_RUNS` (default `500`)
-- `EPI_SYNTH_SEED` (default `42`)
-- `EPI_SYNTH_MODE` (`demo` or `research`, default `demo`)
-- `EPI_DOMAIN_WEIGHTS` (default `general=0.25,tech=0.20,finance=0.20,politics=0.20,medical=0.15`)
-
-### Figure generation
-Create all research figures from the logged JSONL dataset:
-
-```bash
-.venv/bin/python paper/scripts/make_all_figures.py
-```
-
-Outputs are written to:
-- `figures/*.png` (300 DPI)
-- `figures/*.pdf`
-
-### One-command pipeline
-Run synthetic generation + figure generation in one step:
-
-```bash
-bash paper/scripts/run_research_pipeline.sh
-```
-
----
-
-## Quick Research Run (531 synthetic audits)
-Run the root one-command workflow:
+## Reproducible Research Run (531 synthetic audits)
+This is the primary one-command workflow for dataset + figures:
 
 ```bash
 bash scripts/run_research.sh
 ```
 
-This command:
-- verifies required research scripts,
-- runs synthetic generation (default `EPI_SYNTH_RUNS=531`, configurable),
-- appends new records to `paper/data/audit_runs.jsonl`,
-- regenerates the 14 research figures in `figures/` as PNG + PDF.
+### Defaults (if not set)
+The root runner sets:
+- `EPI_SYNTH_RUNS=531`
+- `EPI_SYNTH_SEED=42`
+- `EPI_SYNTH_MODE=demo`
+
+### Behavior
+`bash scripts/run_research.sh` will:
+1. Verify required research scripts (`verify_research_setup.py`).
+2. Generate synthetic runs (plus optional custom testcases if present).
+3. Append new records to `paper/data/audit_runs.jsonl`.
+4. Regenerate the 14 figures in `figures/` as PNG + PDF.
+5. Print dataset path, figures path, JSONL line count, and sorted figure filenames.
+
+### Expected console output (example shape)
+```text
+Research setup verification passed.
+Scripts checked: 2
+Logging directory ready: .../paper/data
+...
+[DONE] dataset_path=.../paper/data/audit_runs.jsonl
+DATASET: .../paper/data/audit_runs.jsonl
+FIGURES_DIR: .../figures
+GENERATED_FILES:
+fig01_claim_verdict_distribution.pdf
+fig01_claim_verdict_distribution.png
+...
+fig14_mode_comparison_or_top_entities.pdf
+fig14_mode_comparison_or_top_entities.png
+dataset path: .../paper/data/audit_runs.jsonl
+figures path: .../figures
+jsonl lines: <N>
+figure files (sorted):
+...
+```
+
+### Override defaults
+Examples:
+
+```bash
+EPI_SYNTH_RUNS=1000 bash scripts/run_research.sh
+```
+
+```bash
+EPI_SYNTH_RUNS=200 EPI_SYNTH_SEED=7 EPI_SYNTH_MODE=research bash scripts/run_research.sh
+```
+
+---
+
+## Data & outputs
+
+### JSONL dataset path
+- `paper/data/audit_runs.jsonl`
+
+### JSONL record fields
+Each line is one JSON object. Core keys include:
+- `run_id`
+- `ts_iso`
+- `mode`
+- `input_text`
+- `input_chars`
+- `input_sha256`
+- `pipeline_version`
+- `result` (full backend result payload)
+- `overall_risk`
+- `hallucination_score`
+- `summary`
+- `timings_ms` (from `result.debug_timings_ms` if available, else `null`)
+
+Additional metadata may be present when generated via scripts:
+- `request_wall_ms`
+- `domain`
+- `run_source`
+- `target_chars`
+- `synthetic_index`
+- `custom_id`
+
+### Figure outputs
+Output directory:
+- `figures/`
+
+Expected files (each as `.png` and `.pdf`):
+1. `fig01_claim_verdict_distribution`
+2. `fig02_risk_score_distribution`
+3. `fig03_risk_tier_distribution`
+4. `fig04_score_vs_supported_rate`
+5. `fig05_score_vs_refuted_rate`
+6. `fig06_calibration_bad_outcome_rate`
+7. `fig07_evidence_source_usage_rates`
+8. `fig08_risk_tier_vs_supported_rate`
+9. `fig09_claims_per_document_distribution`
+10. `fig10_claim_evidence_coverage`
+11. `fig11_claim_contradiction_rate`
+12. `fig12_insufficient_uncertain_split`
+13. `fig13_runtime_breakdown_or_latency_proxy`
+14. `fig14_mode_comparison_or_top_entities`
+
+---
+
+## Input UX constraints (frontend)
+Current input behavior in the audit UI:
+- `Enter` submits.
+- `Shift+Enter` inserts newline.
+- Hard 5000-character cap (typing/paste/drop clamped).
+- Inline toast feedback on overflow.
+- Keyboard and button submission share one code path.
+
+---
+
+## Troubleshooting
+
+### 1) `matplotlib` missing in `.venv`
+`paper/scripts/run_research_pipeline.sh` attempts a matplotlib check and falls back to `python3` for figure generation if needed.
+
+If your system Python lacks matplotlib, install it in either environment:
+
+```bash
+.venv/bin/python -m pip install matplotlib
+```
+
+or
+
+```bash
+python3 -m pip install matplotlib
+```
+
+### 2) PyTorch / NLI warnings
+You may see warnings such as:
+- `PyTorch was not found...`
+- `Failed to load NLI model...`
+
+Impact: pipeline still runs, but NLI-dependent checks may be reduced, which can increase uncertain/insufficient outcomes.
+
+### 3) Port conflicts
+If 3000/3001/8000 are occupied, use the full stack reset command from Quickstart (kills conflicting processes and clears Next lock file).
+
+### 4) Missing scripts in research run
+Run:
+
+```bash
+python3 paper/scripts/verify_research_setup.py
+```
+
+It reports missing files and exits non-zero when setup is incomplete.
+
+---
+
+## Repository layout
+```text
+.
+├── backend/
+│   ├── app.py
+│   ├── core/
+│   │   └── audit_run_logger.py
+│   └── pipeline/
+├── frontend/
+│   ├── app/
+│   │   ├── audit/page.tsx
+│   │   └── api/
+│   │       ├── audit/route.ts
+│   │       └── health/route.ts
+│   └── components/
+├── paper/
+│   ├── data/
+│   │   └── audit_runs.jsonl
+│   └── scripts/
+│       ├── generate_audit_runs.py
+│       ├── make_all_figures.py
+│       ├── run_research_pipeline.sh
+│       └── verify_research_setup.py
+├── scripts/
+│   └── run_research.sh
+├── figures/
+└── README.md
+```
 
 ---
 
 ## Limitations
-- Knowledge-graph coverage is incomplete for long-tail entities and properties.
-- Some narrative claims require context that may not be recoverable from retrieved passages.
-- Entity linking can fail for ambiguous or non-resolvable references.
-- Numeric financial claims may remain uncertain when exact period/value alignment is unavailable.
+- Verdict quality depends on evidence availability and coverage.
+- Long-tail entities and niche claims may remain unresolved.
+- Narrative claims can remain uncertain without strong textual evidence.
+- Synthetic generation is template-based and not a substitute for manually curated benchmark datasets.
 
 ---
 
-## Roadmap
-- Multi-document audit support.
-- Additional domain-specific claim type handling.
-- Expanded property mapping and grounding coverage.
-- Stronger evaluation harnesses for calibration analysis.
+## Roadmap / Future work
+- Add richer custom testcase packs for domain-specific audits.
+- Expand evidence-source analytics in figure pipeline.
+- Improve uncertainty diagnostics and reporting slices.
+- Add lightweight CI checks for research scripts and figure artifacts.
 
 ---
 
