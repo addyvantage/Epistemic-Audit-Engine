@@ -53,11 +53,16 @@ export function AuditInput({ onAudit, isLoading }: AuditInputProps) {
 
     // Breathing animation cycle
     useEffect(() => {
+        let interval: ReturnType<typeof setInterval> | null = null
         if (!isFocused && !text.trim()) {
-            const interval = setInterval(() => {
+            interval = setInterval(() => {
                 setBreathPhase((prev) => (prev + 1) % 2)
             }, 3000)
-            return () => clearInterval(interval)
+        }
+        return () => {
+            if (interval) {
+                clearInterval(interval)
+            }
         }
     }, [isFocused, text])
 
@@ -211,10 +216,12 @@ export function AuditInput({ onAudit, isLoading }: AuditInputProps) {
                     <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
                         <textarea
                             value={text}
+                            maxLength={MAX_CHARS}
                             onChange={handleChange}
                             onKeyDown={handleKeyDown}
                             onPaste={handlePaste}
                             onDrop={handleDrop}
+                            onDragOver={(e) => e.preventDefault()}
                             onFocus={() => setIsFocused(true)}
                             onBlur={() => setIsFocused(false)}
                             placeholder="Paste AI-generated or analytical text to audit..."

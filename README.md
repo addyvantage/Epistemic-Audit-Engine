@@ -1,119 +1,124 @@
 # Epistemic Audit Engine
 
-### Research-Grade Verification of AI Outputs
+## Overview
+Epistemic Audit Engine is a claim-level reliability auditing system for model-generated text. It addresses a practical LLM reliability problem: fluent responses can contain unsupported, uncertain, or contradicted statements that are hard to detect at document level.
 
-The **Epistemic Audit Engine** is a specialized system designed to verify the factual and epistemic integrity of LLM-generated text. Unlike traditional fact-checking tools, it focuses on **claim atomicity**, **narrative grounding**, and **epistemic risk assessment**—detecting not just what is false, but what is unsupported, overstated, or structurally hallucinated.
+Instead of scoring text as a single unit, the system decomposes outputs into atomic epistemic claims, verifies them against retrieved evidence, and returns structured verdicts plus an aggregate hallucination-risk estimate.
 
-## Abstract
+## Motivation
+As LLMs are used in research, education, and analysis workflows, reliability failures are often epistemic rather than stylistic: claims may be plausible but weakly grounded. A useful auditor therefore needs to evaluate claims individually, expose evidence provenance, and quantify residual uncertainty.
 
-As Large Language Models (LLMs) are increasingly integrated into critical workflows, the need for rigorous, automated verification has grown. This system implements a multi-stage pipeline that extracts atomic claims from raw text, links entities to the Wikidata knowledge graph, retrieves semantic evidence from Wikipedia, and performs NLI-based verification. A novel component of this engine is its **Hallucination Risk Scoring**, which aggregates failure modes (e.g., entity mismatch, temporal contradiction, overconfidence) into a single scalar metric, allowing for precise auditing of AI reliability.
+This project is designed for that use case: transparent claim verification, contradiction detection, and risk-aware review of generated text.
 
----
+## System Architecture
+The system uses a web interface for audit orchestration and a Python verification pipeline for claim grounding.
 
-## Capabilities
+- **Frontend (Next.js + React):** audit interface, claim selection, source highlighting, evidence inspection, mode switching.
+- **Backend (FastAPI):** `/audit` and `/health` endpoints; orchestrates extraction, linking, retrieval, verification, and aggregation.
+- **Retrieval layer:** narrative evidence retrieval plus structured evidence retrieval.
+- **Knowledge graph grounding:** Wikidata entity/property evidence for canonical and relational checks.
+- **Verdict + risk aggregation:** per-claim verdicts are aggregated into overall epistemic risk outputs.
 
-### What This System Is
-- **An Epistemic Auditor**: It evaluates whether a text's claims are justified by available external evidence.
-- **A Risk Analyzer**: It quantifies the likelihood of hallucination based on structural and semantic signals.
-- **Transparent**: It provides granular, claim-level evidence linkage.
-
-### What This System Is NOT
-- **A "Truth Oracle"**: It does not determine absolute truth, but rather *verification against a corpus*.
-- **A General Search Engine**: It is optimized for specific entity-centric fact verification, not open-ended queries.
-
-### Core Features
-- **Atomic Claim Extraction**: Decomposes complex sentences into independent, verifiable logic units.
-- **Knowledge-Graph Verification**: Validates entities and relationships against Wikidata.
-- **Narrative Evidence Grounding**: Retrieves (via Wikipedia) and scores textual passages using Sentence-BERT to verify nuanced claims.
-- **Epistemic Polarity Classification**: Distinguishes between `SUPPORTED`, `REFUTED`, and `INSUFFICIENT_EVIDENCE`.
-- **Hallucination Risk Scoring**: Calculates a normalized risk score (0.0–1.0) based on weighted failure signals.
-- **Evidence-Linked UI**: A React/Next.js interface that highlights claims and displays exact source snippets.
-
-### Detection Scope
-
-**What The System Detects:**
-- **Atomic Factual Errors**: Direct contradictions with Wikipedia/Wikidata evidence (e.g., wrong dates, wrong entities).
-- **Structural Hallucinations**: Universal claims without scope, impossible dosages, and entity role conflicts.
-- **Epistemic Overconfidence**: Asserting certainty ("definitely", "always") when evidence is weak.
-
-**What It Explicitly Does NOT Detect:**
-- **Reasoning Flaws**: It does not evaluate the logical coherence of arguments, only the factual basis of atomic premises.
-- **Style/Tone Issues**: It ignores sentiment unless it impacts factual integrity.
-- **Omission**: It cannot detect relevant facts that were *left out*, only errors in what was *included*.
-
-**Required Human Interpretation:**
-- Users must review the "Evidence Snippets" to validate the system's alignment.
-- High Risk scores indicate a *probability* of failure, requiring manual audit.
-- Zero Risk does not imply perfect truth, only alignment with available corpus data.
-
----
-
-## Architecture
-
-```
-epistemic-audit-engine/
-├── backend/
-│   ├── app.py                  # API Entry Point (FastAPI)
-│   ├── pipeline/               # Core audit pipeline logic
-│   └── ...
-├── frontend/                   # Next.js Application
-│   ├── app/                    # App Router pages
-│   └── components/             # React UI components (AuditSummary, ClaimInspector)
-├── claim_extractor.py          # NLP Extraction Module
-├── entity_linker.py            # Wikidata Linking Module
-├── evidence_retriever.py       # Multi-source Evidence Retrieval
-├── claim_verifier.py           # Logic Verification Module
-└── hallucination_detector.py   # Risk Scoring Module
+```text
+[User Text]
+    |
+    v
+[Next.js Audit UI]
+    |
+    v
+[/api/audit proxy]
+    |
+    v
+[FastAPI /audit]
+    |
+    v
+[Pipeline]
+  1) Claim Extraction
+  2) Entity Linking
+  3) Evidence Retrieval (Wikidata + narrative sources)
+  4) Claim Verification
+  5) Hallucination Detection + Risk Aggregation
+    |
+    v
+{ overall_risk, hallucination_score, summary, claims }
 ```
 
----
+## Audit Workflow
+1. **Input text** is submitted from the audit interface.
+2. **Claim decomposition** converts text into atomic claims.
+3. **Entity linking** resolves subjects/objects to canonical entities when possible.
+4. **Evidence retrieval** collects structured and narrative evidence.
+5. **Claim verification** evaluates support/contradiction using alignment signals.
+6. **Verdict classification** assigns structured outcomes per claim.
+7. **Risk scoring** aggregates claim outcomes into document-level risk.
 
-## Development Instructions
+## Input Interface (UX)
+The input layer now enforces deterministic submission and strict length control:
 
-### Prerequisites
-- Python 3.9+
-- Node.js 18+
-- Anaconda (recommended for environment management)
+- **Enter** submits the audit.
+- **Shift+Enter** inserts a newline.
+- **Hard 5000-character limit** is enforced for typing, paste, and drop.
+- **Inline toast feedback** appears when extra text is rejected.
+- **Unified submit path**: keyboard submit and button submit use the same validation flow.
+- **Character counter never exceeds** `5000 / 5000`.
 
-### 1. Backend Setup (FastAPI)
-The backend is a lightweight FastAPI service orchestrating the Python audit modules.
+## Key Features
+- Claim-level decomposition of generated text.
+- Retrieval-based claim verification.
+- Predicate-aware contradiction detection.
+- Structured epistemic verdict assignment.
+- Hallucination risk score aggregation.
+- UI safeguards for input validity and length constraints.
+- Demo mode and Research mode with different verification budgets.
 
+## Running Locally
+
+### 1. Backend Only
 ```bash
-# Verify you are in the project root
-cd "Research Tool/backend" (or root if using script setup)
-
-# Install dependencies (from root)
-pip install -r backend/requirements.txt
-python -m spacy download en_core_web_sm
-
-# Start the API Server
 cd backend
+source ../.venv/bin/activate
 uvicorn app:app --reload --port 8000
 ```
-Server will be available at: `http://localhost:8000`
 
-### 2. Frontend Setup (Next.js)
-The frontend is a modern Next.js 16 (Turbopack) application.
-
+### 2. Frontend Only
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start Development Server
 npm run dev
 ```
-UI will be available at: `http://localhost:3000`
 
----
+### 3. Run Full Stack (Recommended)
+```bash
+(for p in 3000 3001 8000; do lsof -ti :$p | xargs -r kill -9; done; pkill -f "next dev" || true; pkill -f "uvicorn" || true; pkill -f "StatReload" || true; rm -f frontend/.next/dev/lock; sleep 1; (.venv/bin/python -m uvicorn app:app --app-dir backend --reload --host 127.0.0.1 --port 8000) & (cd frontend && npm run dev))
+```
 
-## Status
+Open [http://localhost:3000/audit](http://localhost:3000/audit)
 
-- **Backend**: v1.1 (Frozen Phase) - Core logic stabilized; entity linkage and passage retrieval finalized.
-- **Frontend**: v1.5.1 (Final) - Production UI with normalized summary metrics and visual polish.
-- **Optimization**: Calibration is set to "Conservative," prioritizing low false-positive rates for hallucination detection.
+## Demo Mode vs Research Mode
+- **Demo mode:** uses a faster verification budget for interactive auditing.
+- **Research mode:** uses deeper verification settings for broader evidence coverage.
+
+Both modes preserve the same top-level `/audit` response contract.
+
+## Tech Stack
+- Next.js (App Router)
+- React
+- Tailwind CSS
+- FastAPI
+- Python
+- Claim extraction / linking / retrieval / verification pipeline
+- Wikidata grounding for structured evidence checks
+
+## Limitations
+- Knowledge graph coverage is incomplete for long-tail entities and properties.
+- Narrative-only claims may remain difficult to verify with high confidence.
+- Non-resolvable entities can reduce verification depth.
+- Numeric financial claims can remain uncertain when exact values are unavailable in retrieved evidence.
+
+## Future Work
+- Multi-document audit workflows.
+- Domain-specific claim type extensions.
+- Expanded KG property coverage and grounding heuristics.
 
 ## License
-
 MIT License. See [LICENSE](./LICENSE) for details.
