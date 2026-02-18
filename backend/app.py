@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 from pipeline.run_full_audit import AuditPipeline
+from core.audit_run_logger import AuditRunLogger, normalize_mode
 
 # Configure Logging
 logging.basicConfig(
@@ -33,6 +34,26 @@ class AuditRequest(BaseModel):
 pipeline = None
 PIPELINE_READY = False
 START_TS = time.monotonic()
+audit_logger = AuditRunLogger()
+
+
+def _build_error_result(status_code: int, detail: str) -> dict:
+    return {
+        "status_code": status_code,
+        "detail": detail,
+    }
+
+
+def _safe_log_audit_run(text: str, mode: str, result: dict, started_at: float, extra: Optional[dict] = None) -> None:
+    metadata = {"request_wall_ms": int((time.perf_counter() - started_at) * 1000)}
+    if extra:
+        metadata.update(extra)
+    audit_logger.log_run(
+        input_text=text,
+        mode=mode,
+        result=result,
+        extra_metadata=metadata,
+    )
 
 @app.on_event("startup")
 async def startup_event():
@@ -74,21 +95,62 @@ async def startup_event():
 
 @app.post("/audit")
 async def audit_text(request: AuditRequest):
+    request_started = time.perf_counter()
+    mode = normalize_mode(request.mode)
+
     if not request.text.strip():
-        raise HTTPException(status_code=400, detail="Text cannot be empty.")
-    
+        detail = "Text cannot be empty."
+        _safe_log_audit_run(
+            text=request.text,
+            mode=mode,
+            result=_build_error_result(400, detail),
+            started_at=request_started,
+            extra={"error": "validation_error"},
+        )
+        raise HTTPException(status_code=400, detail=detail)
+
     if len(request.text) > 20000:
-        raise HTTPException(status_code=400, detail="Text too long (max 20,000 characters).")
-    
+        detail = "Text too long (max 20,000 characters)."
+        _safe_log_audit_run(
+            text=request.text,
+            mode=mode,
+            result=_build_error_result(400, detail),
+            started_at=request_started,
+            extra={"error": "validation_error"},
+        )
+        raise HTTPException(status_code=400, detail=detail)
+
     try:
         if not PIPELINE_READY:
-            raise HTTPException(status_code=503, detail="Pipeline not ready.")
-            
-        mode = (request.mode or "research").strip().lower() or "research"
+            detail = "Pipeline not ready."
+            _safe_log_audit_run(
+                text=request.text,
+                mode=mode,
+                result=_build_error_result(503, detail),
+                started_at=request_started,
+                extra={"error": "pipeline_not_ready"},
+            )
+            raise HTTPException(status_code=503, detail=detail)
+
         logger.info("Received audit request (len=%s, mode=%s)", len(request.text), mode)
         result = pipeline.run(request.text, mode=mode)
+        _safe_log_audit_run(
+            text=request.text,
+            mode=mode,
+            result=result,
+            started_at=request_started,
+        )
         return result
+    except HTTPException:
+        raise
     except Exception as e:
+        _safe_log_audit_run(
+            text=request.text,
+            mode=mode,
+            result=_build_error_result(500, str(e)),
+            started_at=request_started,
+            extra={"error": "internal_error"},
+        )
         logger.error(f"Audit Error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 

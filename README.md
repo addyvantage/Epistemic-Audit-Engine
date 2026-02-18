@@ -21,6 +21,8 @@ Claim-level reliability auditing for LLM-generated text using evidence grounding
 - [Example Usage](#example-usage)
 - [Repository Layout](#repository-layout)
 - [Development Notes](#development-notes)
+- [Research Dataset & Figures](#research-dataset--figures)
+- [Quick Research Run (531 synthetic audits)](#quick-research-run-531-synthetic-audits)
 - [Limitations](#limitations)
 - [Roadmap](#roadmap)
 - [License](#license)
@@ -262,6 +264,83 @@ curl -X POST http://127.0.0.1:8000/audit \
 - Frontend API requests are proxied through:
   - `/api/audit`
   - `/api/health`
+
+---
+
+## Research Dataset & Figures
+
+### Always-on audit run logging
+- Every backend `/audit` call appends one JSONL row to:
+  - `paper/data/audit_runs.jsonl`
+- Logging is server-side (FastAPI) and includes:
+  - `run_id`, `ts_iso`, `mode`
+  - `input_text`, `input_chars`, `input_sha256`
+  - `pipeline_version` (from `VERSION` if present)
+  - `result` (full API response payload)
+  - mirrored top-level: `overall_risk`, `hallucination_score`, `summary`
+  - `timings_ms` (from `debug_timings_ms` when available)
+- Appends are failure-tolerant and use append + flush + fsync; logging failures do not break `/audit`.
+
+### Optional custom testcase file
+If present, `paper/data/custom_testcases.jsonl` is included by the generator.
+
+Each line should be one JSON object:
+
+```json
+{"id":"case-001","domain":"tech","mode":"research","text":"Your audit text here."}
+```
+
+Fields:
+- `id`: optional identifier
+- `domain`: optional domain label
+- `mode`: optional (`demo` or `research`)
+- `text`: required input text
+
+### Synthetic run generation
+Generate synthetic runs (plus optional custom testcases) with:
+
+```bash
+.venv/bin/python paper/scripts/generate_audit_runs.py
+```
+
+Configurable env vars:
+- `EPI_SYNTH_RUNS` (default `500`)
+- `EPI_SYNTH_SEED` (default `42`)
+- `EPI_SYNTH_MODE` (`demo` or `research`, default `demo`)
+- `EPI_DOMAIN_WEIGHTS` (default `general=0.25,tech=0.20,finance=0.20,politics=0.20,medical=0.15`)
+
+### Figure generation
+Create all research figures from the logged JSONL dataset:
+
+```bash
+.venv/bin/python paper/scripts/make_all_figures.py
+```
+
+Outputs are written to:
+- `figures/*.png` (300 DPI)
+- `figures/*.pdf`
+
+### One-command pipeline
+Run synthetic generation + figure generation in one step:
+
+```bash
+bash paper/scripts/run_research_pipeline.sh
+```
+
+---
+
+## Quick Research Run (531 synthetic audits)
+Run the root one-command workflow:
+
+```bash
+bash scripts/run_research.sh
+```
+
+This command:
+- verifies required research scripts,
+- runs synthetic generation (default `EPI_SYNTH_RUNS=531`, configurable),
+- appends new records to `paper/data/audit_runs.jsonl`,
+- regenerates the 14 research figures in `figures/` as PNG + PDF.
 
 ---
 
