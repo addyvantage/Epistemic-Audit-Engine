@@ -10,7 +10,8 @@ type Props = {
 }
 
 type EvidenceItem = {
-    id: string
+    reactKey: string
+    evidenceId?: string
     title: string
     snippet: string
     explanation: string
@@ -70,6 +71,9 @@ function EvidenceCard({ item }: { item: EvidenceItem }) {
             {item.value ? <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{item.value}</div> : null}
             <p className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed">{item.snippet || "No narrative snippet found"}</p>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">Explanation: {item.explanation}</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                Evidence ID: {item.evidenceId || "missing evidence_id"}
+            </p>
             {item.url ? (
                 <a
                     href={item.url}
@@ -91,12 +95,13 @@ function normalizeEvidence(claim: any): EvidenceItem[] {
     const contradictedBy = new Set<string>(verification.contradicted_by || [])
 
     const primary = (claim?.evidence?.primary_document || []).map((item: any, idx: number): EvidenceItem => {
-        const id = item.evidence_id || `primary-${idx}`
+        const evidenceId = typeof item.evidence_id === "string" ? item.evidence_id : undefined
         return {
-            id,
+            reactKey: `primary-${idx}`,
+            evidenceId,
             title: `Primary Document ${item.document_type || ""}`.trim(),
             snippet: item.snippet || "No narrative snippet found",
-            explanation: contradictedBy.has(id)
+            explanation: evidenceId && contradictedBy.has(evidenceId)
                 ? "This primary record conflicts with the claim."
                 : "This primary record provides direct supporting context.",
             source: "primary_document",
@@ -107,16 +112,17 @@ function normalizeEvidence(claim: any): EvidenceItem[] {
     })
 
     const wikidata = (claim?.evidence?.wikidata || []).map((item: any, idx: number): EvidenceItem => {
-        const id = item.evidence_id || `wikidata-${idx}`
+        const evidenceId = typeof item.evidence_id === "string" ? item.evidence_id : undefined
         const property = item.property || ""
         const propLabel = WIKIDATA_LABELS[property] || property || "Wikidata"
         return {
-            id,
+            reactKey: `wikidata-${idx}`,
+            evidenceId,
             title: `Wikidata ${propLabel}`,
             snippet: item.snippet || "No narrative snippet found",
-            explanation: contradictedBy.has(id)
+            explanation: evidenceId && contradictedBy.has(evidenceId)
                 ? `Structured record contradicts the claim for ${propLabel.toLowerCase()}.`
-                : usedEvidenceIds.has(id)
+                : evidenceId && usedEvidenceIds.has(evidenceId)
                     ? `Structured record supports the claim for ${propLabel.toLowerCase()}.`
                     : `Related structured record for ${propLabel.toLowerCase()}.`,
             source: "wikidata",
@@ -127,15 +133,16 @@ function normalizeEvidence(claim: any): EvidenceItem[] {
     })
 
     const wikipedia = (claim?.evidence?.wikipedia || []).map((item: any, idx: number): EvidenceItem => {
-        const id = item.evidence_id || `wikipedia-${idx}`
+        const evidenceId = typeof item.evidence_id === "string" ? item.evidence_id : undefined
         const snippet = item.snippet || item.sentence || "No narrative snippet found"
         return {
-            id,
+            reactKey: `wikipedia-${idx}`,
+            evidenceId,
             title: "Wikipedia",
             snippet,
             explanation:
                 item.explanation ||
-                (contradictedBy.has(id)
+                (evidenceId && contradictedBy.has(evidenceId)
                     ? "Narrative sentence indicates a conflicting fact."
                     : "Narrative sentence provides contextual evidence for this claim."),
             source: "wikipedia",
@@ -145,9 +152,10 @@ function normalizeEvidence(claim: any): EvidenceItem[] {
     })
 
     const grokipedia = (claim?.evidence?.grokipedia || []).map((item: any, idx: number): EvidenceItem => {
-        const id = item.evidence_id || `grokipedia-${idx}`
+        const evidenceId = typeof item.evidence_id === "string" ? item.evidence_id : undefined
         return {
-            id,
+            reactKey: `grokipedia-${idx}`,
+            evidenceId,
             title: "Grokipedia",
             snippet: item.snippet || item.text || item.excerpt || "No narrative snippet found",
             explanation: "Supplementary narrative context.",
@@ -166,32 +174,23 @@ function normalizeEvidence(claim: any): EvidenceItem[] {
         grokipedia: 3,
     }
 
-    const sourcePriorityRefuted: Record<EvidenceItem["source"], number> = {
-        wikidata: 0,
-        wikipedia: 1,
-        primary_document: 2,
-        grokipedia: 3,
-    }
-
     combined.sort((a: EvidenceItem, b: EvidenceItem) => {
-        const aRef = contradictedBy.has(a.id) ? 1 : 0
-        const bRef = contradictedBy.has(b.id) ? 1 : 0
-        const aSup = usedEvidenceIds.has(a.id) ? 1 : 0
-        const bSup = usedEvidenceIds.has(b.id) ? 1 : 0
+        const aRef = a.evidenceId && contradictedBy.has(a.evidenceId) ? 1 : 0
+        const bRef = b.evidenceId && contradictedBy.has(b.evidenceId) ? 1 : 0
+        const aSup = a.evidenceId && usedEvidenceIds.has(a.evidenceId) ? 1 : 0
+        const bSup = b.evidenceId && usedEvidenceIds.has(b.evidenceId) ? 1 : 0
 
         if (verdict === "REFUTED") {
             if (aRef !== bRef) return bRef - aRef
-            if (sourcePriorityRefuted[a.source] !== sourcePriorityRefuted[b.source]) {
-                return sourcePriorityRefuted[a.source] - sourcePriorityRefuted[b.source]
-            }
             return b.score - a.score
         }
 
         if (verdict === "SUPPORTED" || verdict === "SUPPORTED_WEAK") {
             if (aSup !== bSup) return bSup - aSup
-            if (sourcePrioritySupported[a.source] !== sourcePrioritySupported[b.source]) {
-                return sourcePrioritySupported[a.source] - sourcePrioritySupported[b.source]
-            }
+            return b.score - a.score
+        }
+
+        if (verdict === "INSUFFICIENT_EVIDENCE" || verdict === "UNCERTAIN") {
             return b.score - a.score
         }
 
@@ -284,7 +283,7 @@ export function ClaimInspectorPanel({ claim, onClose, className = "" }: Props) {
                 <summary className="cursor-pointer text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">Evidence</summary>
                 <div className="space-y-2">
                     {evidenceItems.map((item) => (
-                        <EvidenceCard key={item.id} item={item} />
+                        <EvidenceCard key={item.reactKey} item={item} />
                     ))}
                     {evidenceItems.length === 0 ? (
                         <p className="text-xs text-slate-500 dark:text-slate-400">No evidence items available.</p>

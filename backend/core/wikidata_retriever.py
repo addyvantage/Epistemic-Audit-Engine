@@ -1,6 +1,6 @@
 import requests
 import uuid
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set
 from config.core_config import EVIDENCE_MODALITY_STRUCTURED
 
 class WikidataRetriever:
@@ -17,6 +17,7 @@ class WikidataRetriever:
              "User-Agent": "EpistemicAuditEngine/1.0 (Research Project)"
         })
         self.entity_cache = {}
+        self.place_containment_cache: Dict[str, Dict[str, List[str]]] = {}
 
     def retrieve_structured_evidence(self, q_id: str, p_ids: List[str], claim: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
@@ -46,14 +47,7 @@ class WikidataRetriever:
 
         found_evidence = []
         try:
-            # Check Cache
-            if q_id in self.entity_cache:
-                entity = self.entity_cache[q_id]
-            else:
-                resp = self.session.get(self.WIKIDATA_API_URL, params=params, timeout=5)
-                data = resp.json()
-                entity = data.get("entities", {}).get(q_id, {})
-                self.entity_cache[q_id] = entity
+            entity = self._get_entity(q_id)
 
             claims_data = entity.get("claims", {})
             entity_label = entity.get("labels", {}).get("en", {}).get("value", "Entity")
@@ -72,6 +66,117 @@ class WikidataRetriever:
         except Exception as e:
             # Silent fail for resilience
             return []
+
+    def get_entity_property_qids(self, q_id: str, properties: List[str]) -> Set[str]:
+        """
+        Fetch QID-valued property targets for an entity.
+        """
+        if not q_id or not properties:
+            return set()
+
+        try:
+            entity = self._get_entity(q_id)
+            claims_data = entity.get("claims", {})
+            values: Set[str] = set()
+            for pid in properties:
+                values.update(self._extract_entity_ids(claims_data.get(pid, [])))
+            return values
+        except Exception:
+            return set()
+
+    def get_place_containment(self, q_id: str, max_hops: int = 3) -> Dict[str, List[str]]:
+        """
+        Return place self/parents/country containment labels and qids.
+        Includes:
+        - self QID + label
+        - P131 chain up to max_hops
+        - P17 country at each hop
+        """
+        if not q_id or not q_id.startswith("Q"):
+            return {"qids": [], "labels": []}
+
+        if q_id in self.place_containment_cache:
+            return self.place_containment_cache[q_id]
+
+        visited: Set[str] = set()
+        collected_qids: Set[str] = set()
+        collected_labels: Set[str] = set()
+
+        frontier: Set[str] = {q_id}
+        hops = 0
+
+        while frontier and hops <= max_hops:
+            next_frontier: Set[str] = set()
+            for node_qid in frontier:
+                if node_qid in visited:
+                    continue
+                visited.add(node_qid)
+                collected_qids.add(node_qid)
+
+                entity = self._get_entity(node_qid)
+                label = self._extract_label(entity, node_qid)
+                if label:
+                    collected_labels.add(label)
+
+                claims_data = entity.get("claims", {})
+                parents = self._extract_entity_ids(claims_data.get("P131", []))
+                countries = self._extract_entity_ids(claims_data.get("P17", []))
+
+                for parent_qid in parents + countries:
+                    if parent_qid not in visited:
+                        next_frontier.add(parent_qid)
+
+            frontier = next_frontier
+            hops += 1
+
+        # Ensure labels are collected for all discovered qids.
+        for discovered_qid in list(collected_qids):
+            entity = self._get_entity(discovered_qid)
+            label = self._extract_label(entity, discovered_qid)
+            if label:
+                collected_labels.add(label)
+
+        payload = {
+            "qids": sorted(collected_qids),
+            "labels": sorted(collected_labels),
+        }
+        self.place_containment_cache[q_id] = payload
+        return payload
+
+    def _get_entity(self, q_id: str) -> Dict[str, Any]:
+        if q_id in self.entity_cache:
+            return self.entity_cache[q_id]
+
+        params = {
+            "action": "wbgetentities",
+            "ids": q_id,
+            "props": "claims|labels",
+            "languages": "en",
+            "format": "json"
+        }
+        resp = self.session.get(self.WIKIDATA_API_URL, params=params, timeout=5)
+        data = resp.json()
+        entity = data.get("entities", {}).get(q_id, {})
+        self.entity_cache[q_id] = entity
+        return entity
+
+    def _extract_entity_ids(self, statements: List[Dict[str, Any]]) -> List[str]:
+        values: List[str] = []
+        for stmt in statements or []:
+            mainsnak = stmt.get("mainsnak", {})
+            if mainsnak.get("snaktype") != "value":
+                continue
+            datavalue = mainsnak.get("datavalue", {})
+            val = datavalue.get("value")
+            val_type = datavalue.get("type")
+            if val_type == "wikibase-entityid" and isinstance(val, dict):
+                qid = val.get("id")
+                if qid and qid.startswith("Q"):
+                    values.append(qid)
+        return values
+
+    def _extract_label(self, entity: Dict[str, Any], fallback_qid: str = "") -> str:
+        return entity.get("labels", {}).get("en", {}).get("value", fallback_qid)
 
     def _process_statement(
         self, stmt: Dict[str, Any], q_id: str, pid: str, entity_label: str,

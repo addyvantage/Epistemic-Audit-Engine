@@ -18,6 +18,14 @@ const PROCESSING_STEPS = [
     { id: 'calibrate', label: 'Calibrating risk', icon: Scale },
 ]
 
+const HEALTH_CACHE_KEY = 'epistemic_audit_backend_health_ok_v1'
+const HEALTH_BACKOFF_MS = [0, 250, 600, 1000]
+
+async function sleep(ms: number): Promise<void> {
+    if (ms <= 0) return
+    await new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export default function AuditPage() {
     const [phase, setPhase] = useState<Phase>('INPUT')
     const [result, setResult] = useState<any>(null)
@@ -49,11 +57,19 @@ export default function AuditPage() {
     }, [phase])
 
     const handleAudit = async (text: string) => {
-        setPhase('PROCESSING')
         setError(null)
         setSourceText(text)
         setResult(null)
         setSelectedClaimId(null)
+
+        const isBackendReady = await ensureBackendReady()
+        if (!isBackendReady) {
+            setPhase('INPUT')
+            setError('Backend not ready')
+            return
+        }
+
+        setPhase('PROCESSING')
 
         try {
             const res = await fetch('/api/audit', {
@@ -71,6 +87,40 @@ export default function AuditPage() {
             setError(e.message)
             setPhase('INPUT')
         }
+    }
+
+    const ensureBackendReady = async (): Promise<boolean> => {
+        if (typeof window !== 'undefined' && sessionStorage.getItem(HEALTH_CACHE_KEY) === 'ok') {
+            return true
+        }
+
+        for (const delay of HEALTH_BACKOFF_MS) {
+            await sleep(delay)
+            try {
+                const response = await fetch('/api/health', { cache: 'no-store' })
+                if (!response.ok) {
+                    continue
+                }
+
+                const payload = await response.json()
+                const statusOk = payload?.status === 'ok'
+                const pipelineReady = payload?.pipeline_ready === true
+                const pidValid =
+                    payload?.pid === undefined ||
+                    (typeof payload.pid === 'number' && Number.isFinite(payload.pid))
+
+                if (statusOk && pipelineReady && pidValid) {
+                    if (typeof window !== 'undefined') {
+                        sessionStorage.setItem(HEALTH_CACHE_KEY, 'ok')
+                    }
+                    return true
+                }
+            } catch {
+                // Retry with short backoff.
+            }
+        }
+
+        return false
     }
 
     const finalScore = useMemo(() => {
@@ -238,7 +288,7 @@ export default function AuditPage() {
                                     <div className="text-xs font-mono uppercase tracking-widest text-slate-400 font-bold">Source Document</div>
                                 </div>
 
-                                <div className="py-14 px-10 md:px-16 max-h-[700px] overflow-y-auto">
+                                <div id="source-document-scroll" className="py-14 px-10 md:px-16 max-h-[700px] overflow-y-auto">
                                     <AuditedText
                                         sourceText={sourceText}
                                         claims={result.claims}

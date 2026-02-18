@@ -1,11 +1,13 @@
 from typing import Dict, Any, List, Set, Optional
 import re
 import logging
+import uuid
 from .nli_engine import NLIEngine
 from .hallucination_detector import HallucinationDetector
 from .alignment_scorer import AlignmentScorer
 from .hallucination_attributor import HallucinationAttributor
 from .property_mapper import PropertyMapper
+from .wikidata_retriever import WikidataRetriever
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +18,7 @@ class ClaimVerifier:
         self.alignment_scorer = AlignmentScorer()
         self.attributor = HallucinationAttributor()
         self.property_mapper = PropertyMapper()
+        self.wikidata = WikidataRetriever()
         
         # v1.3.1 Canonical Restoration (Extended v1.6)
         # Temporal predicates -> date properties
@@ -90,10 +93,8 @@ class ClaimVerifier:
         }
 
         self.TEMPORAL_PROPS = {"P569", "P570", "P571", "P577"}
-        self.ENTITY_RELATION_PROPS = {
-            "P159", "P131", "P276", "P17", "P169", "P488", "P39",
-            "P112", "P749", "P127", "P355", "P361", "P19", "P20", "P27"
-        }
+        self.LOCATION_PROPS = {"P159", "P276", "P131", "P17"}
+        self.OWNERSHIP_PROPS = {"P127", "P749", "P355", "P361"}
 
     def verify_claims(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -134,7 +135,7 @@ class ClaimVerifier:
         
         supporting_ids = []
         refuting_ids = []
-        kg_refutations: List[Dict[str, Any]] = []
+        authoritative_contradictions: List[Dict[str, Any]] = []
 
         target_wikidata_props = self._resolve_target_properties(claim)
         wikidata_positive_props = self._collect_positive_wikidata_properties(
@@ -239,7 +240,12 @@ class ClaimVerifier:
                 # v1.6: Canonical Biographical Override
                 # For canonical biographical properties, subject + predicate match is sufficient
                 # for SUPPORTED verdict. The property's existence confirms the fact.
-                elif s_match and p_match and is_canonical_biographical:
+                elif (
+                    s_match
+                    and p_match
+                    and is_canonical_biographical
+                    and self._is_canonical_support_compatible(claim, ev)
+                ):
                     # For canonical facts, we trust the Wikidata property even without
                     # strict object/temporal alignment. The property value IS the truth.
                     supporting_ids.append(ev.get("evidence_id"))
@@ -279,21 +285,6 @@ class ClaimVerifier:
 
                     # o_match=False with entity values: treat as neutral, not contradiction
                     # The claim may still be true but we can't verify it from this property
-
-                contradiction = self._evaluate_structured_contradiction(
-                    claim=claim,
-                    evidence_item=ev,
-                    target_properties=target_wikidata_props,
-                    positive_properties=wikidata_positive_props,
-                )
-                if contradiction:
-                    evidence_id = ev.get("evidence_id")
-                    if evidence_id:
-                        refuting_ids.append(evidence_id)
-                    kg_refutations.append(contradiction)
-                    has_contradiction = True
-                    if contradiction["confidence"] > best_refute_score:
-                        best_refute_score = contradiction["confidence"]
 
             # B. Wikipedia Logic (Textual -> NLI)
             elif source == "WIKIPEDIA":
@@ -344,6 +335,30 @@ class ClaimVerifier:
                     # Multiple weak supports may upgrade INSUFFICIENT to UNCERTAIN
                     weak_support_count += 1
                     weak_support_total_score += score
+
+        # Predicate-aware structured contradiction pass over all Wikidata evidence
+        # (including object-centric retrieval records that may fail strict S+P eligibility).
+        for ev in evidence.get("wikidata", []):
+            contradiction = self._evaluate_structured_contradiction(
+                claim=claim,
+                evidence_item=ev,
+                target_properties=target_wikidata_props,
+                positive_properties=wikidata_positive_props,
+            )
+            if not contradiction:
+                continue
+
+            evidence_id = contradiction.get("evidence_id") or ev.get("evidence_id")
+            if not evidence_id:
+                evidence_id = self._generate_wikidata_evidence_id(ev)
+                ev["evidence_id"] = evidence_id
+
+            contradiction["evidence_id"] = evidence_id
+            authoritative_contradictions.append(contradiction)
+            refuting_ids.append(evidence_id)
+            has_contradiction = True
+            if contradiction.get("confidence", 0.0) > best_refute_score:
+                best_refute_score = contradiction["confidence"]
 
         # v1.3.1 KG FALLBACK VERIFICATION (Rule C1/C2) - Extended v1.6
         # If no narrative evidence and no direct support yet, check Wikidata Canonical Properties explicitly.
@@ -411,10 +426,15 @@ class ClaimVerifier:
             
         # 2. Contradiction
         elif has_contradiction:
-            final_verdict = "REFUTED"
-            confidence = min(0.95, max(0.7, best_refute_score))
-            if kg_refutations:
-                best_kg = max(kg_refutations, key=lambda x: x.get("confidence", 0.0))
+            if refuting_ids:
+                final_verdict = "REFUTED"
+                confidence = min(0.95, max(0.7, best_refute_score))
+            else:
+                final_verdict = "UNCERTAIN"
+                confidence = 0.5
+
+            if authoritative_contradictions:
+                best_kg = max(authoritative_contradictions, key=lambda x: x.get("confidence", 0.0))
                 reasoning = best_kg.get("reasoning", "Contradicted by Wikidata.")
             else:
                 reasoning = "Contradicted by textual evidence."
@@ -520,7 +540,8 @@ class ClaimVerifier:
             "reasoning": reasoning,
             # Evidence Sufficiency (v1.5) - Enables accurate frontend messaging
             "evidence_sufficiency": evidence_sufficiency,
-            "evidence_summary": evidence_summary
+            "evidence_summary": evidence_summary,
+            "authoritative_contradictions": authoritative_contradictions,
         }
 
         return claim
@@ -561,8 +582,47 @@ class ClaimVerifier:
 
             if prop in self.TEMPORAL_PROPS and claim_object and self._temporal_compatible(claim_object, value):
                 positive_props.add(prop)
+                continue
+
+            if prop in {"P19", "P20", "P159"} and self._is_place_compatible_with_evidence(claim, ev):
+                positive_props.add(prop)
 
         return positive_props
+
+    def _is_canonical_support_compatible(self, claim: Dict[str, Any], evidence_item: Dict[str, Any]) -> bool:
+        prop = evidence_item.get("property", "")
+        claim_object = self._extract_claim_object(claim)
+        evidence_value = str(evidence_item.get("value", "") or "")
+        alignment = evidence_item.get("alignment", {})
+
+        if not claim_object:
+            return False
+
+        if prop in self.TEMPORAL_PROPS:
+            return self._temporal_compatible(claim_object, evidence_value)
+
+        if prop in {"P19", "P20", "P159"}:
+            return self._is_place_compatible_with_evidence(claim, evidence_item)
+
+        if alignment.get("object_match") is True:
+            return True
+
+        claim_norm = self._normalize_text(claim_object)
+        if evidence_value.startswith("Q"):
+            evidence_label = self._normalize_text(self._resolve_qid_label(evidence_value))
+            if evidence_label and (
+                claim_norm == evidence_label
+                or claim_norm in evidence_label
+                or evidence_label in claim_norm
+            ):
+                return True
+
+        value_norm = self._normalize_text(evidence_value)
+        return bool(
+            claim_norm
+            and value_norm
+            and (claim_norm == value_norm or claim_norm in value_norm or value_norm in claim_norm)
+        )
 
     def _evaluate_structured_contradiction(
         self,
@@ -590,9 +650,8 @@ class ClaimVerifier:
             return None
 
         alignment = evidence_item.get("alignment", {})
-        object_match = alignment.get("object_match")
-        temporal_match = alignment.get("temporal_match")
         evidence_value = str(evidence_item.get("value", "") or "")
+        evidence_id = evidence_item.get("evidence_id")
         prop_label = self.PROP_LABELS.get(prop, prop)
 
         if prop in self.TEMPORAL_PROPS:
@@ -602,23 +661,167 @@ class ClaimVerifier:
                 return {
                     "reasoning": f"Contradicted by Wikidata {prop_label}: claim year does not match authoritative record.",
                     "confidence": 0.92,
+                    "property": prop,
+                    "evidence_id": evidence_id,
                 }
             return None
 
-        if prop in self.ENTITY_RELATION_PROPS and object_match is False:
-            confidence = 0.9 if evidence_value.startswith("Q") else 0.88
-            return {
-                "reasoning": f"Contradicted by Wikidata {prop_label} ({evidence_value}).",
-                "confidence": confidence,
-            }
+        if prop in self.LOCATION_PROPS:
+            is_contradiction, detail = self._evaluate_location_contradiction(claim, evidence_item)
+            if is_contradiction:
+                return {
+                    "reasoning": f"Contradicted by Wikidata {prop_label}: {detail}",
+                    "confidence": 0.9,
+                    "property": prop,
+                    "evidence_id": evidence_id,
+                }
 
-        if temporal_match is False and prop in self.TEMPORAL_PROPS:
+        if prop in self.OWNERSHIP_PROPS:
+            is_contradiction, detail = self._evaluate_ownership_contradiction(claim, evidence_item)
+            if is_contradiction:
+                return {
+                    "reasoning": f"Contradicted by Wikidata {prop_label}: {detail}",
+                    "confidence": 0.88,
+                    "property": prop,
+                    "evidence_id": evidence_id,
+                }
+
+        if alignment.get("temporal_match") is False and prop in self.TEMPORAL_PROPS:
             return {
                 "reasoning": f"Contradicted by Wikidata {prop_label}.",
                 "confidence": 0.9,
+                "property": prop,
+                "evidence_id": evidence_id,
             }
 
         return None
+
+    def _evaluate_location_contradiction(
+        self,
+        claim: Dict[str, Any],
+        evidence_item: Dict[str, Any],
+    ) -> (bool, str):
+        claim_qids, claim_labels = self._extract_claim_place_candidates(claim)
+        if not claim_qids and not claim_labels:
+            return False, ""
+
+        evidence_qid = str(evidence_item.get("value", "") or "")
+        if not evidence_qid.startswith("Q"):
+            return False, ""
+
+        containment = self.wikidata.get_place_containment(evidence_qid)
+        containment_qids = set(containment.get("qids", []))
+        containment_labels = {self._normalize_text(x) for x in containment.get("labels", []) if x}
+
+        # If we cannot build a containment context, avoid false refutations.
+        if not containment_qids and not containment_labels:
+            return False, ""
+
+        if self._is_place_compatible_with_evidence(claim, evidence_item):
+            return False, ""
+
+        matched_labels = ", ".join(containment.get("labels", [])[:3]) or evidence_qid
+        return True, f"authoritative location is {matched_labels}, not '{claim.get('object', '')}'."
+
+    def _is_place_compatible_with_evidence(self, claim: Dict[str, Any], evidence_item: Dict[str, Any]) -> bool:
+        claim_qids, claim_labels = self._extract_claim_place_candidates(claim)
+        if not claim_qids and not claim_labels:
+            return False
+
+        evidence_qid = str(evidence_item.get("value", "") or "")
+        if not evidence_qid.startswith("Q"):
+            value_norm = self._normalize_text(evidence_qid)
+            return any(
+                label == value_norm or label in value_norm or value_norm in label
+                for label in claim_labels
+                if label and value_norm
+            )
+
+        containment = self.wikidata.get_place_containment(evidence_qid)
+        containment_qids = set(containment.get("qids", []))
+        containment_labels = {self._normalize_text(x) for x in containment.get("labels", []) if x}
+
+        if claim_qids.intersection(containment_qids):
+            return True
+
+        for label in claim_labels:
+            if label in containment_labels:
+                return True
+            if any(label in candidate or candidate in label for candidate in containment_labels if candidate):
+                return True
+
+        return False
+
+    def _evaluate_ownership_contradiction(
+        self,
+        claim: Dict[str, Any],
+        evidence_item: Dict[str, Any],
+    ) -> (bool, str):
+        predicate_text = f"{claim.get('predicate', '')} {claim.get('claim_text', '')}".lower()
+        is_acquisition_claim = any(
+            token in predicate_text for token in ["acquired", "acquire", "bought", "purchased", "takeover"]
+        )
+        if not is_acquisition_claim:
+            return False, ""
+
+        # Use explicit ownership/parent properties only for acquisition contradiction.
+        if evidence_item.get("property") not in {"P127", "P749"}:
+            return False, ""
+
+        subject_qid = claim.get("subject_entity", {}).get("entity_id", "")
+        object_qid = claim.get("object_entity", {}).get("entity_id", "")
+        if not (subject_qid.startswith("Q") and object_qid.startswith("Q")):
+            return False, ""
+
+        # For acquisition contradictions, evidence must be about the claimed target entity.
+        evidence_entity_qid = evidence_item.get("entity_id", "")
+        if evidence_entity_qid != object_qid:
+            return False, ""
+
+        evidence_owner_qid = str(evidence_item.get("value", "") or "")
+        if not evidence_owner_qid.startswith("Q"):
+            return False, ""
+
+        accepted_owners = {subject_qid}
+        accepted_owners.update(self.wikidata.get_entity_property_qids(subject_qid, ["P127", "P749"]))
+
+        if evidence_owner_qid in accepted_owners:
+            return False, ""
+
+        owner_label = self._resolve_qid_label(evidence_owner_qid)
+        return True, f"target entity owner/parent is {owner_label} ({evidence_owner_qid}), not the claim subject."
+
+    def _extract_claim_place_candidates(self, claim: Dict[str, Any]) -> (Set[str], Set[str]):
+        qids: Set[str] = set()
+        labels: Set[str] = set()
+
+        object_entity = claim.get("object_entity", {}) or {}
+        object_qid = object_entity.get("entity_id")
+        if object_qid and object_qid.startswith("Q"):
+            qids.add(object_qid)
+
+        raw_candidates = [
+            claim.get("object", ""),
+            object_entity.get("canonical_name", ""),
+            object_entity.get("text", ""),
+        ]
+
+        for candidate in raw_candidates:
+            normalized = self._normalize_text(candidate)
+            if normalized:
+                labels.add(normalized)
+
+        return qids, labels
+
+    def _resolve_qid_label(self, qid: str) -> str:
+        containment = self.wikidata.get_place_containment(qid, max_hops=0)
+        labels = containment.get("labels", [])
+        if labels:
+            return labels[0]
+        return qid
+
+    def _normalize_text(self, text: str) -> str:
+        return re.sub(r"[^a-z0-9\s]", "", (text or "").lower()).strip()
 
     def _extract_claim_object(self, claim: Dict[str, Any]) -> str:
         obj = (claim.get("object", "") or "").strip()
@@ -630,6 +833,13 @@ class ClaimVerifier:
 
     def _extract_years(self, text: str) -> List[str]:
         return re.findall(r"\b(\d{4})\b", str(text))
+
+    def _generate_wikidata_evidence_id(self, evidence_item: Dict[str, Any]) -> str:
+        entity_id = evidence_item.get("entity_id", "")
+        prop = evidence_item.get("property", "")
+        value = evidence_item.get("value", "")
+        unique_str = f"WIKIDATA:{entity_id}:{prop}:{value}"
+        return str(uuid.uuid5(uuid.NAMESPACE_OID, unique_str))
         
     def _temporal_compatible(self, claim_val: str, ev_val: str) -> bool:
         """

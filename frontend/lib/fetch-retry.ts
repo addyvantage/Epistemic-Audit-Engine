@@ -1,25 +1,44 @@
+function isRetryableNetworkError(err: any): boolean {
+    return (
+        err?.cause?.code === 'ECONNREFUSED' ||
+        err?.message?.includes?.('fetch failed') ||
+        err?.message === 'Service Unavailable'
+    )
+}
+
+function jitteredDelayMs(baseMs: number): number {
+    const capped = Math.min(Math.max(0, baseMs), 2000)
+    const jitterFactor = 1 + (Math.random() * 0.3 - 0.15)
+    return Math.max(0, Math.round(capped * jitterFactor))
+}
+
 export async function fetchWithRetry(url: string, options: RequestInit = {}, retries = 5, backoff = 300): Promise<Response> {
-    try {
-        const res = await fetch(url, options)
+    let attempt = 0
+    let delayMs = Math.max(0, backoff)
+    let lastError: any = null
 
-        // If 503 Service Unavailable (Backend loading), retry
-        if (res.status === 503) {
-            throw new Error('Service Unavailable')
+    while (attempt <= retries) {
+        try {
+            const res = await fetch(url, options)
+            if (res.status !== 503) {
+                return res
+            }
+            lastError = new Error('Service Unavailable')
+        } catch (err: any) {
+            if (!isRetryableNetworkError(err)) {
+                throw err
+            }
+            lastError = err
         }
 
-        return res
-    } catch (err: any) {
-        if (retries <= 0) throw err;
-
-        // Retry on connection refused (FetchError/TypeError) or 503
-        const isNetworkError = err.cause?.code === 'ECONNREFUSED' || err.message.includes('fetch failed') || err.message === 'Service Unavailable';
-
-        if (isNetworkError) {
-            console.log(`[FetchRetry] Retrying ${url} (${retries} attempts left) in ${backoff}ms...`);
-            await new Promise(resolve => setTimeout(resolve, backoff));
-            return fetchWithRetry(url, options, retries - 1, backoff * 1.5); // Exponential backoff
+        if (attempt === retries) {
+            break
         }
 
-        throw err;
+        await new Promise((resolve) => setTimeout(resolve, jitteredDelayMs(delayMs)))
+        delayMs = Math.min(Math.round(delayMs * 1.5), 2000)
+        attempt += 1
     }
+
+    throw lastError || new Error('fetchWithRetry failed')
 }

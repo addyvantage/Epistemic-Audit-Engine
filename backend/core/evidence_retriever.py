@@ -81,6 +81,7 @@ class EvidenceRetriever:
         subj_ent = claim.get("subject_entity", {})
         obj_ent = claim.get("object_entity", {})
         predicate = claim.get("predicate", "").lower()
+        primary_docs = [self._ensure_primary_evidence_id(dict(doc)) for doc in (primary_docs or [])]
         
         wikidata_ev = []
         wikipedia_ev = []
@@ -110,6 +111,10 @@ class EvidenceRetriever:
             if p_ids:
                 matches = self.wikidata_retriever.retrieve_structured_evidence(query_qid, p_ids, claim)
                 if matches:
+                    for match in matches:
+                        if not match.get("evidence_id"):
+                            content = f"{match.get('entity_id','')}:{match.get('property','')}:{match.get('value','')}"
+                            match["evidence_id"] = self._generate_evidence_id("WIKIDATA", content)
                     wikidata_ev = matches
                     status["wikidata"] = "FOUND"
         
@@ -155,23 +160,23 @@ class EvidenceRetriever:
         
         if can_use_grok and status["wikidata"] == "NOT_FOUND" and status["wikipedia"] == "NOT_FOUND":
             if subj_ent.get("source_status", {}).get("grokipedia") == "VERIFIED":
-                 grok_excerpt = self.grok_client.fetch_excerpt(subj_ent.get("canonical_name"))
-                 if grok_excerpt:
-                     # Add alignment for Grokipedia (Soft)
-                     grok_excerpt["alignment"] = {
-                         "subject_match": True,
-                         "predicate_match": True,
-                         "object_match": False, 
-                         "temporal_match": False
-                     }
-                     grok_excerpt["modality"] = EVIDENCE_MODALITY_TEXTUAL
-                     grok_excerpt["evidence_id"] = self._generate_evidence_id("GROKIPEDIA", grok_excerpt.get("excerpt", ""))
-                     grokipedia_ev = [grok_excerpt]
-                     status["grokipedia"] = "FOUND"
-                 else:
-                     status["grokipedia"] = "ABSENT"
+                grok_excerpt = self.grok_client.fetch_excerpt(subj_ent.get("canonical_name"))
+                if grok_excerpt:
+                    # Add alignment for Grokipedia (Soft)
+                    grok_excerpt["alignment"] = {
+                        "subject_match": True,
+                        "predicate_match": True,
+                        "object_match": False,
+                        "temporal_match": False
+                    }
+                    grok_excerpt["modality"] = EVIDENCE_MODALITY_TEXTUAL
+                    grok_excerpt["evidence_id"] = grok_excerpt.get("evidence_id") or self._generate_evidence_id("GROKIPEDIA", grok_excerpt.get("excerpt", ""))
+                    grokipedia_ev = [grok_excerpt]
+                    status["grokipedia"] = "FOUND"
+                else:
+                    status["grokipedia"] = "ABSENT"
             else:
-                 status["grokipedia"] = "ABSENT" if subj_ent.get("source_status", {}).get("grokipedia") == "ABSENT" else "SKIPPED"
+                status["grokipedia"] = "ABSENT" if subj_ent.get("source_status", {}).get("grokipedia") == "ABSENT" else "SKIPPED"
 
         # Anchor Validation (v1.4: include RESOLVED_COREF)
         valid_statuses = ["RESOLVED", "RESOLVED_SOFT", "RESOLVED_COREF"]
@@ -235,10 +240,28 @@ class EvidenceRetriever:
 
     def _get_query_direction(self, predicate: str) -> str:
         p = predicate.lower()
-        object_centric = ["founded", "invented", "created", "discovered", "directed", "wrote", "authored", "released", "launched", "manufactured", "developed"]
+        object_centric = [
+            "founded", "invented", "created", "discovered", "directed",
+            "wrote", "authored", "released", "launched", "manufactured",
+            "developed", "acquired", "bought", "purchased"
+        ]
         if any(k in p for k in object_centric):
             return "OBJECT"
         return "SUBJECT"
+
+    def _ensure_primary_evidence_id(self, evidence: Dict[str, Any]) -> Dict[str, Any]:
+        if evidence.get("evidence_id"):
+            return evidence
+
+        content = "|".join([
+            str(evidence.get("authority", "PRIMARY")),
+            str(evidence.get("document_type", "")),
+            str(evidence.get("filing_year", "")),
+            str(evidence.get("fact", "")),
+            str(evidence.get("value", "")),
+        ])
+        evidence["evidence_id"] = self._generate_evidence_id("PRIMARY_DOCUMENT", content)
+        return evidence
 
     def _generate_evidence_id(self, source: str, content: str) -> str:
         unique_str = f"{source}:{content}"

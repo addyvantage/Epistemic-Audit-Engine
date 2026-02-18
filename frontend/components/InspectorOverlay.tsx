@@ -37,6 +37,13 @@ export function InspectorOverlay({ claim, open, onClose }: Props) {
                     setCursorVisible(true)
                 }}
                 onMouseLeave={() => setCursorVisible(false)}
+                onWheel={(event) => {
+                    const scrollContainer = document.getElementById("source-document-scroll")
+                    if (scrollContainer) {
+                        scrollContainer.scrollTop += event.deltaY
+                        event.preventDefault()
+                    }
+                }}
                 onClick={onClose}
             />
 
@@ -53,7 +60,7 @@ export function InspectorOverlay({ claim, open, onClose }: Props) {
                 </div>
             ) : null}
 
-            <div className="absolute inset-y-0 right-0 z-50 w-full max-w-[430px] p-3 sm:p-4 pointer-events-none">
+            <div className="absolute inset-y-0 right-0 z-50 w-full max-w-[430px] p-3 sm:p-4 pointer-events-none cursor-default">
                 <div className="h-full pointer-events-auto">
                     <ClaimInspectorPanel claim={claim} onClose={onClose} className="h-full" />
                 </div>

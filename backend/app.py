@@ -1,4 +1,6 @@
 import logging
+import os
+import time
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +32,7 @@ class AuditRequest(BaseModel):
 
 pipeline = None
 PIPELINE_READY = False
+START_TS = time.monotonic()
 
 @app.on_event("startup")
 async def startup_event():
@@ -37,6 +40,37 @@ async def startup_event():
     # Initialize singleton
     pipeline = AuditPipeline()
     PIPELINE_READY = True
+    configured_host = os.getenv("UVICORN_HOST") or os.getenv("HOST")
+    configured_port = os.getenv("UVICORN_PORT") or os.getenv("PORT")
+
+    if configured_host and configured_port:
+        logger.info(
+            "Backend ready pid=%s pipeline_ready=%s configured_host=%s configured_port=%s",
+            os.getpid(),
+            PIPELINE_READY,
+            configured_host,
+            configured_port,
+        )
+    elif configured_port:
+        logger.info(
+            "Backend ready pid=%s pipeline_ready=%s configured_port=%s",
+            os.getpid(),
+            PIPELINE_READY,
+            configured_port,
+        )
+    elif configured_host:
+        logger.info(
+            "Backend ready pid=%s pipeline_ready=%s configured_host=%s",
+            os.getpid(),
+            PIPELINE_READY,
+            configured_host,
+        )
+    else:
+        logger.info(
+            "Backend ready pid=%s pipeline_ready=%s",
+            os.getpid(),
+            PIPELINE_READY,
+        )
 
 @app.post("/audit")
 async def audit_text(request: AuditRequest):
@@ -62,4 +96,10 @@ async def audit_text(request: AuditRequest):
 async def health_check():
     if not PIPELINE_READY:
         logger.warning("Health check requested before pipeline ready.")
-    return {"status": "ok"}
+    uptime_s = max(0.0, time.monotonic() - START_TS)
+    return {
+        "status": "ok",
+        "pipeline_ready": PIPELINE_READY,
+        "pid": os.getpid(),
+        "uptime_s": round(uptime_s, 3),
+    }

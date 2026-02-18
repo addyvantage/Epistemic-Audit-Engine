@@ -13,7 +13,7 @@ export async function POST(request: Request) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(body),
-        }, 10, 500) // Aggressive retry: 10 attempts, starting at 500ms
+        }, 3, 250) // Short backoff to avoid long blocking retries
 
         if (!res.ok) {
             const err = await res.text()
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
         return NextResponse.json(data)
 
     } catch (e) {
-        console.error(e)
+        console.error("Audit proxy failed:", e)
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
     }
 }

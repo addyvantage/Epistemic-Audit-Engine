@@ -1,8 +1,16 @@
 import logging
 import re
+from html import unescape
+from typing import List, Dict, Optional, Any
+from urllib.parse import quote, urlparse, parse_qs
+
 import requests
 import spacy
-from typing import List, Dict, Optional, Any
+
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    BeautifulSoup = None
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -37,199 +45,305 @@ class WikipediaPassageRetriever:
 
     def extract_passages(self, wiki_url: str, claim_text: str, max_passages: int = 2) -> List[Dict[str, Any]]:
         """
-        Fetch, score, and select concise narrative snippets from Wikipedia.
-        Returns 1-2 sentence-level snippets with best-effort section anchors.
+        Extract high-signal narrative snippets copied directly from Wikipedia parse HTML,
+        with stable oldid-backed links when available.
         """
-        if not wiki_url or "wikipedia.org" not in wiki_url:
-            return []
-
         title = self._extract_title_from_url(wiki_url)
         if not title:
             return []
 
-        text_content = self._fetch_plain_text(title)
-        if not text_content:
+        parsed = self._fetch_parsed_page(title)
+        if not parsed.get("html"):
             return []
 
-        sections = self._fetch_sections(title)
-        sentences = self._segment_sentences(text_content)
-        if not sentences:
+        revision_id = self._fetch_revision_id(title)
+        sentence_records = self._extract_sentence_records(parsed["html"], parsed.get("sections", []))
+        if not sentence_records:
             return []
 
-        scored_sentences = self._score_sentences(sentences, claim_text)
-        if not scored_sentences:
-            return []
+        scored_records = self._score_sentences(sentence_records, claim_text)
+        selected = self._select_top_sentences(scored_records, max_passages=max_passages)
 
-        selected: List[Dict[str, Any]] = []
-        threshold = 0.35
+        evidence_items: List[Dict[str, Any]] = []
+        for record in selected:
+            section_anchor = record.get("anchor") or self._fallback_section_anchor(
+                claim_text,
+                record.get("sentence", ""),
+                parsed.get("sections", []),
+            )
+            url = self._build_stable_url(title, revision_id, section_anchor)
+            explanation = self._build_explanation(record.get("matched_terms", {}))
 
-        for candidate in scored_sentences:
-            if len(selected) >= max_passages:
-                break
-            if candidate["score"] < threshold:
-                continue
-
-            sentence = self._trim_words(candidate["text"], max_words=60)
-            anchor = self._choose_section_anchor(claim_text, sentence, sections)
-            url = f"{wiki_url}#{anchor}" if anchor else wiki_url
-
-            selected.append({
+            evidence_items.append({
                 "source": "wikipedia",
                 "url": url,
-                "snippet": sentence,
-                "sentence": sentence,
-                "score": float(candidate["score"]),
+                "snippet": record.get("sentence", ""),
+                "sentence": record.get("sentence", ""),
+                "score": float(record.get("score", 0.0)),
                 "textual_evidence": True,
-                "section_anchor": anchor,
-                "matched_terms": candidate.get("matched_terms", {}),
-                "explanation": self._build_explanation(candidate.get("matched_terms", {}))
+                "section_anchor": section_anchor,
+                "matched_terms": record.get("matched_terms", {}),
+                "explanation": explanation,
             })
 
-        # If strict threshold misses, return closest sentence rather than null snippet.
-        if not selected and scored_sentences:
-            best = scored_sentences[0]
-            sentence = self._trim_words(best["text"], max_words=60)
-            anchor = self._choose_section_anchor(claim_text, sentence, sections)
-            url = f"{wiki_url}#{anchor}" if anchor else wiki_url
-            selected.append({
-                "source": "wikipedia",
-                "url": url,
-                "snippet": sentence,
-                "sentence": sentence,
-                "score": float(best["score"]),
-                "textual_evidence": True,
-                "section_anchor": anchor,
-                "matched_terms": best.get("matched_terms", {}),
-                "explanation": "Closest narrative sentence found for this claim."
-            })
-
-        return selected
+        return evidence_items
 
     def _extract_title_from_url(self, url: str) -> Optional[str]:
         try:
-            parts = url.split("/wiki/")
-            if len(parts) > 1:
-                return parts[1].split("#")[0]
+            if "/wiki/" in url:
+                title = url.split("/wiki/", 1)[1].split("#", 1)[0]
+                return title.strip()
+
+            parsed = urlparse(url)
+            params = parse_qs(parsed.query)
+            title = params.get("title", [""])[0]
+            return title.strip() or None
+        except Exception:
+            return None
+
+    def _fetch_parsed_page(self, title: str) -> Dict[str, Any]:
+        params = {
+            "action": "parse",
+            "page": title,
+            "prop": "text|sections",
+            "format": "json",
+            "redirects": 1,
+        }
+        try:
+            response = self.session.get(self.API_URL, params=params, timeout=8)
+            response.raise_for_status()
+            data = response.json().get("parse", {})
+            html = data.get("text", {}).get("*", "")
+            sections = data.get("sections", [])
+            return {"html": html, "sections": sections}
+        except Exception as exc:
+            logger.warning("Failed parse fetch for '%s': %s", title, exc)
+            return {"html": "", "sections": []}
+
+    def _fetch_revision_id(self, title: str) -> Optional[int]:
+        params = {
+            "action": "query",
+            "prop": "revisions",
+            "rvprop": "ids",
+            "titles": title,
+            "format": "json",
+            "redirects": 1,
+        }
+        try:
+            response = self.session.get(self.API_URL, params=params, timeout=8)
+            response.raise_for_status()
+            pages = response.json().get("query", {}).get("pages", {})
+            for page in pages.values():
+                revisions = page.get("revisions", [])
+                if not revisions:
+                    continue
+                rev = revisions[0]
+                return rev.get("revid")
         except Exception:
             return None
         return None
 
-    def _fetch_plain_text(self, title: str) -> str:
-        params = {
-            "action": "query",
-            "prop": "extracts",
-            "titles": title,
-            "explaintext": 1,
-            "format": "json",
-            "redirects": 1,
-        }
-        try:
-            response = self.session.get(self.API_URL, params=params, timeout=7)
-            response.raise_for_status()
-            data = response.json()
-            pages = data.get("query", {}).get("pages", {})
-            for pid, page in pages.items():
-                if pid == "-1":
+    def _extract_sentence_records(self, html: str, sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if BeautifulSoup:
+            return self._extract_with_bs4(html)
+        return self._extract_with_regex(html)
+
+    def _extract_with_bs4(self, html: str) -> List[Dict[str, Any]]:
+        records: List[Dict[str, Any]] = []
+        soup = BeautifulSoup(html, "html.parser")
+        root = soup.find("div", class_="mw-parser-output") or soup
+
+        current_anchor = None
+        for child in root.children:
+            name = getattr(child, "name", None)
+            if not name:
+                continue
+
+            if name in {"h2", "h3", "h4"}:
+                headline = child.find(class_="mw-headline")
+                if headline and headline.get("id"):
+                    current_anchor = headline.get("id")
+                continue
+
+            if name != "p":
+                continue
+
+            paragraph = " ".join(child.stripped_strings)
+            paragraph = self._clean_text(paragraph)
+            if len(paragraph) < 40:
+                continue
+
+            for sentence in self._split_sentences(paragraph):
+                sentence = self._clean_text(sentence)
+                if len(sentence) < 25:
                     continue
-                return page.get("extract", "")
-        except Exception as exc:
-            logger.warning("Failed to fetch Wikipedia plain text for %s: %s", title, exc)
-        return ""
+                records.append({
+                    "sentence": sentence,
+                    "anchor": current_anchor,
+                })
 
-    def _fetch_sections(self, title: str) -> List[Dict[str, str]]:
-        params = {
-            "action": "parse",
-            "page": title,
-            "prop": "sections",
-            "format": "json",
-            "redirects": 1,
-        }
-        try:
-            response = self.session.get(self.API_URL, params=params, timeout=7)
-            response.raise_for_status()
-            data = response.json()
-            return data.get("parse", {}).get("sections", [])
-        except Exception:
-            return []
+        return records
 
-    def _segment_sentences(self, text: str) -> List[str]:
-        text = text.strip()
-        if not text:
-            return []
+    def _extract_with_regex(self, html: str) -> List[Dict[str, Any]]:
+        records: List[Dict[str, Any]] = []
+        current_anchor = None
 
-        sentences: List[str] = []
+        for match in re.finditer(r"<(h[2-4]|p)\b[^>]*>(.*?)</\1>", html, flags=re.IGNORECASE | re.DOTALL):
+            tag_name = (match.group(1) or "").lower()
+            body = match.group(2) or ""
+
+            if tag_name.startswith("h"):
+                anchor_match = re.search(r'class="mw-headline"[^>]*id="([^"]+)"', body)
+                if anchor_match:
+                    current_anchor = unescape(anchor_match.group(1))
+                continue
+
+            text = self._clean_text(re.sub(r"<[^>]+>", " ", body))
+            if len(text) < 40:
+                continue
+
+            for sentence in self._split_sentences(text):
+                sentence = self._clean_text(sentence)
+                if len(sentence) < 25:
+                    continue
+                records.append({
+                    "sentence": sentence,
+                    "anchor": current_anchor,
+                })
+
+        return records
+
+    def _split_sentences(self, text: str) -> List[str]:
         if self.nlp:
             doc = self.nlp(text)
-            for sent in doc.sents:
-                clean = sent.text.strip()
-                if self._is_candidate_sentence(clean):
-                    sentences.append(clean)
-        else:
-            raw = re.split(r"(?<=[.!?])\s+", text)
-            for sent in raw:
-                clean = sent.strip()
-                if self._is_candidate_sentence(clean):
-                    sentences.append(clean)
+            return [s.text.strip() for s in doc.sents if s.text.strip()]
+        return [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
 
-        return sentences
+    def _score_sentences(self, records: List[Dict[str, Any]], claim_text: str) -> List[Dict[str, Any]]:
+        features = self._extract_claim_features(claim_text)
+        semantic_scores = [0.0] * len(records)
 
-    def _is_candidate_sentence(self, sentence: str) -> bool:
-        if len(sentence) < 35:
-            return False
-        if sentence.startswith("="):
-            return False
-        if "may refer to" in sentence.lower():
-            return False
-        return True
-
-    def _score_sentences(self, sentences: List[str], claim_text: str) -> List[Dict[str, Any]]:
-        claim_features = self._extract_claim_features(claim_text)
-        claim_keywords = claim_features["keywords"]
-        claim_years = claim_features["years"]
-        claim_numbers = claim_features["numbers"]
-
-        semantic_scores: List[float] = [0.0 for _ in sentences]
-        if self.model and cosine_similarity and sentences:
+        if self.model and cosine_similarity and records:
             try:
-                claim_emb = self.model.encode([claim_text])
-                sent_emb = self.model.encode(sentences)
-                semantic_scores = cosine_similarity(claim_emb, sent_emb)[0].tolist()
+                claim_embedding = self.model.encode([claim_text])
+                sentence_embeddings = self.model.encode([r["sentence"] for r in records])
+                semantic_scores = cosine_similarity(claim_embedding, sentence_embeddings)[0].tolist()
             except Exception as exc:
-                logger.debug("SBERT scoring failed; using lexical-only scoring: %s", exc)
+                logger.debug("SBERT scoring unavailable: %s", exc)
 
         scored: List[Dict[str, Any]] = []
-        for idx, sentence in enumerate(sentences):
-            sent_lower = sentence.lower()
+        for idx, record in enumerate(records):
+            sentence = record.get("sentence", "")
+            sentence_lower = sentence.lower()
 
-            keyword_hits = [kw for kw in claim_keywords if kw in sent_lower]
-            year_hits = [y for y in claim_years if y in sentence]
-            number_hits = [n for n in claim_numbers if n in sentence]
+            keyword_hits = [kw for kw in features["keywords"] if kw in sentence_lower]
+            year_hits = [year for year in features["years"] if year in sentence]
+            number_hits = [num for num in features["numbers"] if num in sentence]
 
-            lexical = (len(keyword_hits) / max(1, len(claim_keywords))) if claim_keywords else 0.0
-            semantic = semantic_scores[idx] if idx < len(semantic_scores) else 0.0
+            keyword_score = len(keyword_hits) / max(1, len(features["keywords"])) if features["keywords"] else 0.0
+            semantic_score = semantic_scores[idx] if idx < len(semantic_scores) else 0.0
 
-            score = 0.55 * lexical + 0.35 * semantic
+            score = 0.55 * keyword_score + 0.30 * semantic_score
             if year_hits:
-                score += 0.15
+                score += 0.12
             if number_hits:
-                score += 0.15
+                score += 0.12
             if year_hits and number_hits:
-                score += 0.10
-            if any(term in sent_lower for term in ["revenue", "advertising", "headquarters", "found", "founded", "acquired", "subsidiary", "parent"]):
                 score += 0.08
 
-            scored.append({
-                "text": sentence,
-                "score": float(min(score, 1.0)),
-                "matched_terms": {
-                    "keywords": keyword_hits,
-                    "years": year_hits,
-                    "numbers": number_hits,
-                },
-            })
+            enriched = dict(record)
+            enriched["score"] = min(1.0, float(score))
+            enriched["matched_terms"] = {
+                "keywords": keyword_hits,
+                "years": year_hits,
+                "numbers": number_hits,
+            }
+            scored.append(enriched)
 
-        scored.sort(key=lambda x: x["score"], reverse=True)
+        scored.sort(key=lambda x: x.get("score", 0.0), reverse=True)
         return scored
+
+    def _select_top_sentences(self, scored: List[Dict[str, Any]], max_passages: int = 2) -> List[Dict[str, Any]]:
+        selected: List[Dict[str, Any]] = []
+        seen_sentences = set()
+
+        for record in scored:
+            if len(selected) >= max_passages:
+                break
+
+            sentence = record.get("sentence", "")
+            if not sentence or sentence in seen_sentences:
+                continue
+
+            word_count = len(sentence.split())
+            if word_count > 60:
+                continue
+
+            if record.get("score", 0.0) < 0.22 and selected:
+                break
+
+            selected.append(record)
+            seen_sentences.add(sentence)
+
+        if selected:
+            return selected
+
+        if scored:
+            fallback = dict(scored[0])
+            fallback["sentence"] = self._clip_words(fallback.get("sentence", ""), max_words=60)
+            return [fallback]
+
+        return []
+
+    def _fallback_section_anchor(self, claim_text: str, sentence: str, sections: List[Dict[str, Any]]) -> Optional[str]:
+        if not sections:
+            return None
+
+        combined = f"{claim_text} {sentence}".lower()
+        preferred_sections = []
+        if any(token in combined for token in ["founded", "founder", "inception", "born", "established"]):
+            preferred_sections.append("history")
+        if any(token in combined for token in ["revenue", "profit", "income", "financial", "advertising"]):
+            preferred_sections.extend(["finance", "financials"])
+        if any(token in combined for token in ["headquarters", "located", "based"]):
+            preferred_sections.extend(["headquarters", "location"])
+
+        for preferred in preferred_sections:
+            for section in sections:
+                anchor = section.get("anchor")
+                line = (section.get("line") or "").lower()
+                if anchor and preferred in line:
+                    return anchor
+
+        features = self._extract_claim_features(f"{claim_text} {sentence}")
+        keywords = set(features["keywords"])
+
+        best_anchor = None
+        best_overlap = 0
+        for section in sections:
+            anchor = section.get("anchor")
+            line = (section.get("line") or "").lower()
+            if not anchor or not line:
+                continue
+
+            section_tokens = set(re.findall(r"[a-z][a-z0-9_\-]{2,}", line))
+            overlap = len(section_tokens.intersection(keywords))
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_anchor = anchor
+
+        return best_anchor
+
+    def _build_stable_url(self, title: str, revision_id: Optional[int], anchor: Optional[str]) -> str:
+        title_encoded = quote(title.replace(" ", "_"), safe="()_:/")
+        if revision_id:
+            base = f"https://en.wikipedia.org/w/index.php?title={title_encoded}&oldid={revision_id}"
+        else:
+            base = f"https://en.wikipedia.org/wiki/{title_encoded}"
+
+        if anchor:
+            return f"{base}#{quote(anchor, safe=':_-')}"
+        return base
 
     def _extract_claim_features(self, claim_text: str) -> Dict[str, List[str]]:
         text = (claim_text or "").lower()
@@ -240,6 +354,7 @@ class WikipediaPassageRetriever:
             "the", "and", "for", "with", "from", "that", "this", "was", "were", "are", "is", "in", "on", "of", "to", "by", "as", "at",
             "a", "an", "it", "its", "their", "his", "her", "or", "be", "been", "has", "have", "had", "into", "than", "most"
         }
+
         tokens = re.findall(r"[a-z][a-z0-9_\-]{2,}", text)
         keywords = [t for t in tokens if t not in stopwords]
 
@@ -249,31 +364,6 @@ class WikipediaPassageRetriever:
             "numbers": numbers,
         }
 
-    def _choose_section_anchor(self, claim_text: str, sentence: str, sections: List[Dict[str, str]]) -> Optional[str]:
-        if not sections:
-            return None
-
-        features = self._extract_claim_features(f"{claim_text} {sentence}")
-        keywords = set(features["keywords"])
-
-        best_anchor = None
-        best_score = 0
-
-        for sec in sections:
-            line = (sec.get("line") or "").lower()
-            anchor = sec.get("anchor")
-            if not line or not anchor:
-                continue
-
-            section_tokens = set(re.findall(r"[a-z][a-z0-9_\-]{2,}", line))
-            overlap = len(section_tokens.intersection(keywords))
-
-            if overlap > best_score:
-                best_score = overlap
-                best_anchor = anchor
-
-        return best_anchor if best_score > 0 else None
-
     def _build_explanation(self, matched_terms: Dict[str, List[str]]) -> str:
         keywords = matched_terms.get("keywords", [])
         years = matched_terms.get("years", [])
@@ -281,19 +371,24 @@ class WikipediaPassageRetriever:
 
         parts: List[str] = []
         if keywords:
-            parts.append("keyword overlap")
+            parts.append("keyword")
         if years:
-            parts.append("year match")
+            parts.append("year")
         if numbers:
-            parts.append("numeric match")
+            parts.append("number")
 
         if not parts:
-            return "Narrative evidence from a relevant Wikipedia sentence."
+            return "Matched on topical sentence relevance."
 
-        return "Matched on " + ", ".join(parts) + "."
+        return "Matched on " + "+".join(parts) + "."
 
-    def _trim_words(self, text: str, max_words: int = 60) -> str:
-        words = text.split()
+    def _clean_text(self, text: str) -> str:
+        text = unescape(text or "")
+        text = re.sub(r"\s+", " ", text)
+        return text.strip()
+
+    def _clip_words(self, sentence: str, max_words: int = 60) -> str:
+        words = sentence.split()
         if len(words) <= max_words:
-            return text
+            return sentence
         return " ".join(words[:max_words]).rstrip() + "..."
