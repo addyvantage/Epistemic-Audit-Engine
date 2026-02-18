@@ -1,26 +1,23 @@
 # Epistemic Audit Engine
+Claim-level reliability auditing for LLM-generated text using evidence grounding and epistemic risk scoring.
 
-Claim-level reliability auditing for LLM outputs using retrieval, knowledge-graph grounding, and epistemic risk scoring.
+---
 
 ## Screenshot
-
-> Placeholder: add an audit workspace screenshot here (for example, `/docs/images/audit-ui.png`).
+> Placeholder: add an audit workspace screenshot here (for example: `docs/images/audit-ui.png`).
 
 ---
 
 ## Table of Contents
-
-- [What It Does](#what-it-does)
+- [What This System Does](#what-this-system-does)
 - [Why It Exists](#why-it-exists)
 - [System Architecture](#system-architecture)
+- [Verification Pipeline](#verification-pipeline)
 - [Evidence Sources](#evidence-sources)
-- [Verdicts \\& Risk Outputs](#verdicts--risk-outputs)
-- [UX / Input Rules](#ux--input-rules)
+- [Verdicts & Risk Outputs](#verdicts--risk-outputs)
+- [Input Interface (UX Rules)](#input-interface-ux-rules)
 - [Running Locally](#running-locally)
-  - [Backend Only](#backend-only)
-  - [Frontend Only](#frontend-only)
-  - [Run Full Stack (Single Command)](#run-full-stack-single-command)
-  - [Health Check](#health-check)
+- [Health Check](#health-check)
 - [Example Usage](#example-usage)
 - [Repository Layout](#repository-layout)
 - [Development Notes](#development-notes)
@@ -30,200 +27,182 @@ Claim-level reliability auditing for LLM outputs using retrieval, knowledge-grap
 
 ---
 
-## What It Does
+## What This System Does
+Epistemic Audit Engine evaluates model output at the **claim level**.
 
-Epistemic Audit Engine evaluates generated text at the **claim level**.
+For each submitted text, the system:
+- extracts atomic claims,
+- links entities to canonical references,
+- retrieves external evidence,
+- verifies each claim,
+- aggregates claim outcomes into risk outputs.
 
-For each input passage, it:
-
-1. extracts atomic claims,
-2. links entities to canonical identifiers,
-3. retrieves evidence from structured and narrative sources,
-4. assigns claim verdicts,
-5. aggregates results into an epistemic risk summary.
-
-The backend API returns this stable top-level shape:
-
-```json
-{
-  "overall_risk": "LOW | MEDIUM | HIGH",
-  "hallucination_score": 0.0,
-  "summary": {},
-  "claims": []
-}
-```
+This makes review workflows more transparent: users can inspect which claims are supported, contradicted, or unresolved.
 
 ---
 
 ## Why It Exists
+LLM outputs can sound confident while mixing correct facts with unsupported statements.
 
-LLM outputs can be fluent while still containing unsupported or contradictory statements.
+This creates **epistemic risk** in research, education, and analysis contexts, where users need to distinguish:
+- what is evidence-backed,
+- what is uncertain,
+- what is contradicted.
 
-This project is built for **epistemic auditing**, not answer generation. It helps reviewers inspect what is supported, what is uncertain, and what is contradicted by available evidence.
-
-It is an audit aid, not an oracle.
+**This is an audit aid, not an oracle.**
 
 ---
 
 ## System Architecture
-
-The application uses a Next.js frontend with API proxy routes and a FastAPI backend pipeline.
+The application is split between a Next.js frontend and a FastAPI backend pipeline.
 
 ```text
-[Browser UI: /audit]
-        |
-        v
-[Next.js App Router]
-  - /api/health  ---> proxies to backend /health
-  - /api/audit   ---> proxies to backend /audit
-        |
-        v
-[FastAPI: backend/app.py]
-  - GET  /health
+[Browser UI (/audit)]
+         |
+         v
+[Next.js API Proxy]
+  - /api/audit
+  - /api/health
+         |
+         v
+[FastAPI Backend]
   - POST /audit
-        |
-        v
+  - GET  /health
+         |
+         v
 [Verification Pipeline]
-  1) Claim Extraction
-  2) Entity Linking
-  3) Evidence Retrieval
-  4) Claim Verification
-  5) Hallucination Detection + Risk Aggregation
+         |
+         v
+[Risk Outputs]
+  - overall_risk
+  - hallucination_score
+  - summary
+  - claims
 ```
 
-### Pipeline Stages (Brief)
+---
 
-- **Claim Extraction**: decomposes text into auditable claim units.
-- **Entity Linking**: resolves claim entities to canonical references (e.g., Wikidata QIDs).
-- **Evidence Retrieval**: gathers structured and narrative evidence candidates.
-- **Claim Verification**: determines support, contradiction, or uncertainty.
-- **Risk Aggregation**: computes document-level risk outputs from claim outcomes.
+## Verification Pipeline
+### 1) Claim Extraction
+Converts input text into atomic, auditable claim units.
+
+### 2) Entity Linking
+Resolves claim entities to canonical identifiers when possible (for structured grounding and disambiguation).
+
+### 3) Evidence Retrieval
+Collects candidate evidence from structured and narrative sources.
+
+### 4) Claim Verification
+Evaluates alignment and contradiction signals to assign a verdict per claim.
+
+### 5) Risk Aggregation
+Combines claim-level results into document-level risk outputs.
 
 ---
 
 ## Evidence Sources
+- **Wikidata (structured KG evidence):**
+  - Entity/property-based evidence (triples, property IDs such as `P571`, `P159`, etc.).
+  - Used for structured support and contradiction checks.
+- **Wikipedia (narrative passages):**
+  - Sentence-level narrative evidence and source links.
 
-### 1) Wikidata (Structured)
-
-- Uses structured entity/property evidence (e.g., property IDs such as `P571`, `P159`, etc.).
-- Supports predicate-aware checks and contradiction handling when authoritative values conflict with the claim.
-
-### 2) Wikipedia (Narrative)
-
-- Retrieves sentence-level passages for narrative grounding.
-- Includes source links; stable `oldid` links are used when available by retrieval logic.
-
-### Important Note
-
-Evidence availability directly affects verdict confidence and final classification. Missing evidence is not equivalent to falsity.
+Evidence retrieval quality and source coverage influence verification outcomes.  
+**Evidence availability affects verdict confidence.**
 
 ---
 
 ## Verdicts & Risk Outputs
-
-### Claim Verdicts
-
-The verifier may emit:
-
+Claim-level verdicts:
 - `SUPPORTED`
 - `REFUTED`
 - `UNCERTAIN`
 - `INSUFFICIENT_EVIDENCE`
 - `PARTIALLY_SUPPORTED`
 
-### Risk Outputs
-
-- `hallucination_score`: normalized scalar risk estimate derived from claim outcomes.
-- `overall_risk`: coarse label (`LOW`, `MEDIUM`, `HIGH`) derived from the score.
-- `summary`: counts/rollups for claim-level result categories.
+Top-level `/audit` response shape:
+- `overall_risk`: coarse label (`LOW`, `MEDIUM`, `HIGH`)
+- `hallucination_score`: normalized scalar risk estimate
+- `summary`: aggregate counts
+- `claims`: detailed claim-level results
 
 ---
 
-## UX / Input Rules
-
-The audit input component enforces deterministic behavior:
-
-- **Enter** submits the audit.
-- **Shift+Enter** inserts a newline.
-- **Hard 5000-character maximum** enforced for typing, paste, and drop.
-- Overflow attempts are clamped and trigger inline toast feedback.
-- Button submit and keyboard submit share the same validation/submit path.
+## Input Interface (UX Rules)
+The audit input layer enforces deterministic behavior:
+- Press **Enter** to submit.
+- Press **Shift+Enter** to insert newline.
+- Hard **5000-character cap** on input.
+- Overflow paste is clamped to 5000 characters.
+- Inline toast feedback appears on overflow.
+- Keyboard and button share one submit path.
 
 ---
 
 ## Running Locally
 
 ### Prerequisites
-
 - Python 3.9+
 - Node.js 18+
 
-### Backend Only
-
+### Backend Setup
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt
+```
+
+Run backend:
+```bash
 .venv/bin/python -m uvicorn app:app --app-dir backend --reload --host 127.0.0.1 --port 8000
 ```
 
-### Frontend Only
-
+### Frontend Setup
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-### Run Full Stack (Single Command)
+---
 
+### Run Full Stack (Single Command)  ⭐ REQUIRED
 ```bash
 (for p in 3000 3001 8000; do lsof -ti :$p | xargs -r kill -9; done; pkill -f "next dev" || true; pkill -f "uvicorn" || true; rm -f frontend/.next/dev/lock; sleep 1; (.venv/bin/python -m uvicorn app:app --app-dir backend --reload --host 127.0.0.1 --port 8000) & (cd frontend && npm run dev))
 ```
 
-Then open: <http://localhost:3000/audit>
+Open http://localhost:3000/audit
 
-### Health Check
+---
 
+## Health Check
 ```bash
 curl http://127.0.0.1:8000/health
-```
-
-Expected payload shape:
-
-```json
-{
-  "status": "ok",
-  "pipeline_ready": true,
-  "pid": 12345,
-  "uptime_s": 12.34
-}
 ```
 
 ---
 
 ## Example Usage
-
 ### Example Input Text
-
 ```text
 Google was founded in 1998 by Larry Page and Sergey Brin. The company is headquartered in Mountain View, California. Alphabet reports annual revenue in public filings.
 ```
 
-### Example Audit Request
-
+### Example POST Request
 ```bash
 curl -X POST http://127.0.0.1:8000/audit \
   -H "Content-Type: application/json" \
-  -d '{"text":"Google was founded in 1998 by Larry Page and Sergey Brin. The company is headquartered in Mountain View, California."}'
+  -d '{
+    "text": "Google was founded in 1998 by Larry Page and Sergey Brin. The company is headquartered in Mountain View, California.",
+    "mode": "demo"
+  }'
 ```
 
-### Example Response Shape
-
+### Example Output JSON Shape
 ```json
 {
   "overall_risk": "LOW",
-  "hallucination_score": 0.18,
+  "hallucination_score": 0.21,
   "summary": {
     "total_asserted_claims": 2,
     "supported": 1,
@@ -239,7 +218,7 @@ curl -X POST http://127.0.0.1:8000/audit \
       "verification": {
         "verdict": "SUPPORTED",
         "confidence": 0.9,
-        "reasoning": "Matched structured evidence"
+        "reasoning": "Matched structured evidence."
       },
       "evidence": {
         "wikidata": [],
@@ -254,7 +233,6 @@ curl -X POST http://127.0.0.1:8000/audit \
 ---
 
 ## Repository Layout
-
 ```text
 .
 ├── backend/
@@ -269,7 +247,6 @@ curl -X POST http://127.0.0.1:8000/audit \
 │   │   │   └── health/route.ts
 │   │   └── audit/page.tsx
 │   └── components/
-│       └── AuditInput.tsx
 ├── tests/
 ├── package.json
 └── README.md
@@ -278,19 +255,17 @@ curl -X POST http://127.0.0.1:8000/audit \
 ---
 
 ## Development Notes
-
 - The UI supports **Demo** and **Research** modes.
-  - Demo mode uses tighter performance budgets/timeouts.
-  - Research mode runs deeper verification settings.
-- Next.js may automatically use **port 3001** if 3000 is already occupied.
-- Frontend API calls are proxied via:
-  - `frontend/app/api/audit/route.ts`
-  - `frontend/app/api/health/route.ts`
+  - Demo mode uses a tighter runtime budget.
+  - Research mode uses deeper retrieval/verification settings.
+- Next.js may fall back to **port 3001** if port 3000 is occupied.
+- Frontend API requests are proxied through:
+  - `/api/audit`
+  - `/api/health`
 
 ---
 
 ## Limitations
-
 - Knowledge-graph coverage is incomplete for long-tail entities and properties.
 - Some narrative claims require context that may not be recoverable from retrieved passages.
 - Entity linking can fail for ambiguous or non-resolvable references.
@@ -299,7 +274,6 @@ curl -X POST http://127.0.0.1:8000/audit \
 ---
 
 ## Roadmap
-
 - Multi-document audit support.
 - Additional domain-specific claim type handling.
 - Expanded property mapping and grounding coverage.
@@ -308,5 +282,4 @@ curl -X POST http://127.0.0.1:8000/audit \
 ---
 
 ## License
-
-MIT License. See [LICENSE](./LICENSE) for details.
+MIT License.
