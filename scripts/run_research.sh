@@ -1,6 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -z "${EPI_SYNTH_MODE+x}" ]; then
+    echo ""
+    echo "ERROR: EPI_SYNTH_MODE not set."
+    echo "You must explicitly choose:"
+    echo "    EPI_SYNTH_MODE=demo"
+    echo "or"
+    echo "    EPI_SYNTH_MODE=research"
+    echo ""
+    echo "Example:"
+    echo "EPI_SYNTH_RUNS=531 EPI_SYNTH_MODE=research bash scripts/run_research.sh"
+    echo ""
+    exit 1
+fi
+
+if [[ "$EPI_SYNTH_MODE" != "demo" && "$EPI_SYNTH_MODE" != "research" ]]; then
+    echo ""
+    echo "ERROR: Invalid EPI_SYNTH_MODE value: $EPI_SYNTH_MODE"
+    echo "Allowed values:"
+    echo "    demo"
+    echo "    research"
+    echo ""
+    exit 1
+fi
+
+echo "Running synthetic audits in MODE=$EPI_SYNTH_MODE"
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_DIR="$ROOT_DIR/paper/data"
 FIGURES_DIR="$ROOT_DIR/figures"
@@ -13,7 +39,6 @@ mkdir -p "$DATA_DIR" "$ROOT_DIR/paper/scripts" "$FIGURES_DIR" "$ROOT_DIR/scripts
 
 : "${EPI_SYNTH_RUNS:=531}"
 : "${EPI_SYNTH_SEED:=42}"
-: "${EPI_SYNTH_MODE:=demo}"
 export EPI_SYNTH_RUNS EPI_SYNTH_SEED EPI_SYNTH_MODE
 
 PYTHON_BIN="${PYTHON_BIN:-$ROOT_DIR/.venv/bin/python}"
