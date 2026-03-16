@@ -142,6 +142,7 @@ EPI_SYNTH_MODE=demo EPI_SYNTH_RUNS=500 bash scripts/run_research.sh
 - **Expected ports**: frontend on `http://127.0.0.1:3000`, backend on `http://127.0.0.1:8000`
 
 The frontend health proxy calls the backend `GET /health` endpoint and fails fast with a clear `503` JSON payload when the backend is unavailable.
+The root backend launcher prefers `./.venv/bin/python`, then `backend/.venv/bin/python`, then falls back to `python3` or `python` if one of those interpreters already has the backend requirements installed.
 
 ---
 
