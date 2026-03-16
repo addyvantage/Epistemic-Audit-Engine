@@ -117,6 +117,7 @@ const HeroSection = () => {
     return (
         <section
             ref={heroRef}
+            style={{ position: 'relative' }}
             className="min-h-screen flex flex-col items-center justify-center text-center px-4 relative overflow-hidden bg-transparent selection:bg-emerald-500/30"
         >
             {/* Local Glows Removed in favor of Global CSS Gradient System for Scroll Continuity */}
@@ -256,7 +257,6 @@ const CapabilitiesSection = () => {
                             variants={staggerItem}
                             whileHover={{
                                 borderColor: "rgba(255, 255, 255, 0.15)",
-                                backgroundColor: "rgba(255, 255, 255, 0.02)",
                                 transition: { duration: 0.3 }
                             }}
                             className="p-8 rounded-2xl bg-white/60 dark:bg-transparent border border-slate-200 dark:border-neutral-800 hover:bg-white dark:hover:bg-transparent hover:border-slate-300 dark:hover:border-neutral-700 shadow-sm hover:shadow-md dark:hover:shadow-none transition-all duration-500 group relative overflow-hidden"
@@ -525,7 +525,7 @@ const ShowcaseSection = () => {
                 </p>
             </div>
 
-            <div className="max-w-4xl mx-auto relative group">
+            <div className="max-w-4xl mx-auto relative group" style={{ position: 'relative' }}>
                 <AnimatePresence>
                     {viewMode === 'GUIDED' && demoState !== 'INSPECT_FREELY' && (
                         <MotionDiv
@@ -691,9 +691,9 @@ const ShowcaseSection = () => {
                                     {...({
                                         animate: {
                                             opacity: (isHighlightActive && activeStep === 1) ? 1 : 0.6,
-                                            backgroundColor: (isHighlightActive && activeStep === 1) ? 'rgba(241, 245, 249, 1)' : 'transparent',
-                                            // Dark mode override
-                                            ...(isHighlightActive && activeStep === 1 ? { backgroundColor: 'rgba(51, 65, 85, 0.4)' } : {})
+                                            backgroundColor: (isHighlightActive && activeStep === 1)
+                                                ? 'rgba(148, 163, 184, 0.22)'
+                                                : 'rgba(148, 163, 184, 0)',
                                         },
                                         className: "px-1 rounded-lg transition-colors duration-500 relative group/claim dark:bg-opacity-20"
                                     } as any)}
@@ -1011,7 +1011,7 @@ const BoundariesSection = () => (
 
 export default function LandingPage() {
     return (
-        <div className="bg-transparent overflow-x-hidden transition-colors duration-300">
+        <div className="relative bg-transparent overflow-x-hidden transition-colors duration-300">
             <HeroSection />
             <CapabilitiesSection />
             <PositioningSection />
