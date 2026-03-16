@@ -5,8 +5,7 @@ import os
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-from risk_aggregator import RiskAggregator
-from hallucination_models import HallucinationFlag
+from core.risk_aggregator import RiskAggregator
 
 class TestRiskFormula(unittest.TestCase):
     def setUp(self):
@@ -36,18 +35,32 @@ class TestRiskFormula(unittest.TestCase):
             {"verification": {"verdict": "REFUTED"}}
         ]
         result = self.aggregator.calculate_risk([], claims)
-        # T=2. r=0.5. Raw=0.5. Damp=0.5*0.4=0.20.
-        self.assertAlmostEqual(result["hallucination_score"], 0.20)
+        # Small-sample floor keeps a refuted claim from collapsing to LOW risk.
+        self.assertAlmostEqual(result["hallucination_score"], 0.625)
+        self.assertEqual(result["overall_risk"], "HIGH")
 
     def test_mixed_scenario_dampened(self):
-        """Strict Math: T=3. r=0.33, u=0.33. Raw=0.433. Damp=0.433*0.6 = 0.26"""
+        """Small-sample mixed scenario should still reflect the refuted claim materially."""
         claims = [
             {"verification": {"verdict": "REFUTED"}},
             {"verification": {"verdict": "UNCERTAIN"}},
             {"verification": {"verdict": "SUPPORTED"}}
         ]
         result = self.aggregator.calculate_risk([], claims)
-        self.assertAlmostEqual(result["hallucination_score"], 0.26, delta=0.01)
+        self.assertAlmostEqual(result["hallucination_score"], 0.5667, delta=0.01)
+        self.assertEqual(result["overall_risk"], "HIGH")
+
+    def test_single_insufficient_claim_is_not_low(self):
+        claims = [{"verification": {"verdict": "INSUFFICIENT_EVIDENCE"}}]
+        result = self.aggregator.calculate_risk([], claims)
+        self.assertAlmostEqual(result["hallucination_score"], 0.42, delta=0.01)
+        self.assertEqual(result["overall_risk"], "MEDIUM")
+
+    def test_single_refuted_claim_is_high_risk(self):
+        claims = [{"verification": {"verdict": "REFUTED"}}]
+        result = self.aggregator.calculate_risk([], claims)
+        self.assertAlmostEqual(result["hallucination_score"], 0.80, delta=0.01)
+        self.assertEqual(result["overall_risk"], "HIGH")
 
     def test_multiple_refuted_large(self):
         """Strict Math: T=10, R=4 -> r=0.4 -> Score=0.4"""

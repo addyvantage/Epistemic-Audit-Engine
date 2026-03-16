@@ -208,8 +208,15 @@ class WikidataRetriever:
         if not parsed_value:
             return None
 
+        value_label = ""
+        if val_type == "wikibase-entityid" and isinstance(val, dict):
+            qid = val.get("id")
+            if qid:
+                value_label = self._extract_label(self._get_entity(qid), qid)
+
         # Template Generation
-        declarative_sentence = f"{entity_label} [{pid}] is {parsed_value}."
+        display_value = value_label or parsed_value
+        declarative_sentence = f"{entity_label} [{pid}] is {display_value}."
 
         # Compute alignment metadata for verdict eligibility
         alignment = self._compute_structured_alignment(
@@ -225,6 +232,7 @@ class WikidataRetriever:
             "entity_id": q_id,
             "property": pid,
             "value": parsed_value,
+            "value_label": value_label,
             "snippet": declarative_sentence,
             "textual_evidence": False,
             "url": f"https://www.wikidata.org/wiki/{q_id}#{pid}",

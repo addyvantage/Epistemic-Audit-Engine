@@ -188,7 +188,7 @@ function normalizeEvidence(claim: any): EvidenceItem[] {
                             : `Related structured record for ${propLabel.toLowerCase()}.`),
             source: "wikidata",
             score: item.score || 0,
-            value: String(item.value ?? ""),
+            value: String(item.value_label ?? item.value ?? ""),
             url: item.url,
             badges,
         }
@@ -303,6 +303,24 @@ export function ClaimInspectorPanel({ claim, onClose, className = "", explainabi
     const facetStatus = claim.verification?.facet_status || {}
     const reasoning = claim.verification?.reasoning || "No specific reasoning provided."
     const evidenceItems = useMemo(() => normalizeEvidence(claim), [claim])
+    const contradictedEvidence = useMemo(
+        () =>
+            contradictedBy.map((id) => {
+                const item = evidenceItems.find((candidate) => candidate.evidenceId === id)
+                if (!item) {
+                    return { id, label: id, detail: "" }
+                }
+                const label = item.value
+                    ? `${item.title}: ${item.value}`
+                    : item.title
+                return {
+                    id,
+                    label,
+                    detail: item.snippet || item.explanation || "",
+                }
+            }),
+        [contradictedBy, evidenceItems]
+    )
 
     const tabs: Array<{ key: InspectorTab; label: string }> = [
         { key: "VERDICT", label: "Verdict" },
@@ -390,14 +408,15 @@ export function ClaimInspectorPanel({ claim, onClose, className = "", explainabi
                         </div>
                     ) : null}
 
-                    {contradictedBy.length > 0 ? (
+                    {contradictedEvidence.length > 0 ? (
                         <div>
                             <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Contradicted by</div>
-                            <div className="flex flex-wrap gap-2">
-                                {contradictedBy.map((id) => (
-                                    <span key={id} className="rounded-md bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 px-2 py-1 text-[11px] font-mono">
-                                        {id}
-                                    </span>
+                            <div className="space-y-2">
+                                {contradictedEvidence.map((item) => (
+                                    <div key={item.id} className="rounded-md bg-rose-100/80 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 px-2.5 py-2">
+                                        <div className="text-[11px] font-medium">{item.label}</div>
+                                        {item.detail ? <div className="text-[11px] opacity-80 mt-1 leading-relaxed">{item.detail}</div> : null}
+                                    </div>
                                 ))}
                             </div>
                         </div>

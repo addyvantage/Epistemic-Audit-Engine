@@ -30,6 +30,7 @@ Usage:
 
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
+import re
 
 
 @dataclass
@@ -109,6 +110,19 @@ class EntityContext:
             "the nation",
             "the capital",
         ],
+    }
+
+    PRONOUN_ENTITY_TYPES: Dict[str, Optional[str]] = {
+        "it": None,
+        "its": None,
+        "they": None,
+        "their": None,
+        "them": None,
+        "he": "PERSON",
+        "him": "PERSON",
+        "his": "PERSON",
+        "she": "PERSON",
+        "her": "PERSON",
     }
 
     # -------------------------------------------------------------------------
@@ -197,6 +211,11 @@ class EntityContext:
         """
         text_lower = text.lower().strip()
 
+        pronoun_resolution = self._resolve_pronoun_reference(text_lower)
+        if pronoun_resolution:
+            self._log_resolution(text, pronoun_resolution.entity_id, pronoun_resolution.resolution_method, pronoun_resolution.decision_reason)
+            return pronoun_resolution
+
         # 1. Match against generic patterns
         matched_type = None
         for entity_type, patterns in self.GENERIC_PATTERNS.items():
@@ -205,6 +224,10 @@ class EntityContext:
                 break
 
         if not matched_type:
+            nominal_resolution = self._resolve_nominal_reference(text_lower)
+            if nominal_resolution:
+                self._log_resolution(text, nominal_resolution.entity_id, nominal_resolution.resolution_method, nominal_resolution.decision_reason)
+                return nominal_resolution
             self._log_resolution(text, None, "NO_PATTERN_MATCH", "Text not in generic patterns")
             return None
 
@@ -243,6 +266,85 @@ class EntityContext:
 
         self._log_resolution(text, dominant.entity_id, method, reason)
         return resolution
+
+    def _resolve_pronoun_reference(self, text_lower: str) -> Optional[CorefResolution]:
+        pronoun_key = text_lower
+        if text_lower.startswith("its "):
+            pronoun_key = "its"
+        elif text_lower.startswith("their "):
+            pronoun_key = "their"
+        entity_type = self.PRONOUN_ENTITY_TYPES.get(pronoun_key)
+        if pronoun_key not in self.PRONOUN_ENTITY_TYPES:
+            return None
+
+        if entity_type:
+            candidates = self.entities_by_type.get(entity_type, [])
+        else:
+            candidates = [
+                mention
+                for mention in self.mention_sequence
+                if mention.entity_type not in {"ROLE", "UNKNOWN"}
+            ]
+        if not candidates:
+            return None
+
+        dominant, method, reason = self._find_dominant_entity(candidates, entity_type or "ANY")
+        if not dominant or dominant.confidence < self.MIN_RESOLUTION_CONFIDENCE:
+            return None
+
+        return CorefResolution(
+            entity_id=dominant.entity_id,
+            canonical_name=dominant.canonical_name,
+            entity_type=dominant.entity_type,
+            confidence=dominant.confidence,
+            sources=dominant.sources,
+            resolution_method=f"PRONOUN_{method}",
+            decision_reason=f"Pronoun reference resolved to {dominant.canonical_name}. {reason}",
+            source_mention=dominant,
+        )
+
+    def _resolve_nominal_reference(self, text_lower: str) -> Optional[CorefResolution]:
+        if not text_lower.startswith("the "):
+            return None
+
+        tokens = re.findall(r"[a-z]+", text_lower)
+        if len(tokens) < 2 or len(tokens) > 4:
+            return None
+
+        head = tokens[-1]
+        candidates = [
+            mention
+            for mention in self.mention_sequence
+            if self._canonical_matches_head(mention.canonical_name, head)
+        ]
+        if not candidates:
+            return None
+
+        dominant, method, reason = self._find_dominant_entity(candidates, "NOMINAL")
+        if not dominant or dominant.confidence < self.MIN_RESOLUTION_CONFIDENCE:
+            return None
+
+        return CorefResolution(
+            entity_id=dominant.entity_id,
+            canonical_name=dominant.canonical_name,
+            entity_type=dominant.entity_type,
+            confidence=dominant.confidence,
+            sources=dominant.sources,
+            resolution_method=f"NOMINAL_{method}",
+            decision_reason=f"Nominal reference '{text_lower}' resolved to {dominant.canonical_name}. {reason}",
+            source_mention=dominant,
+        )
+
+    def _canonical_matches_head(self, canonical_name: str, head: str) -> bool:
+        tokens = [tok for tok in re.findall(r"[a-z]+", canonical_name.lower()) if tok]
+        if not tokens:
+            return False
+        singular_head = head[:-1] if head.endswith("s") else head
+        for token in tokens:
+            singular_token = token[:-1] if token.endswith("s") else token
+            if token == head or singular_token == singular_head:
+                return True
+        return False
 
     def _find_dominant_entity(
         self, candidates: List[EntityMention], entity_type: str

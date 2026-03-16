@@ -40,7 +40,18 @@ class EvidenceRetriever:
         self.predicate_property_hints = {
             "headquarters": ["P159", "P131", "P276", "P17"],
             "located in": ["P131", "P276", "P17"],
-            "country": ["P17", "P27"],
+            "is in": ["P131", "P276", "P17"],
+            "are in": ["P131", "P276", "P17"],
+            "was in": ["P131", "P276", "P17"],
+            "were in": ["P131", "P276", "P17"],
+            "capital city": ["P36"],
+            "capital of": ["P36"],
+            "made of": ["P186"],
+            "built by": ["P84", "P170", "P112"],
+            "constructed by": ["P84", "P170"],
+            "built": ["P571", "P84", "P170"],
+            "constructed": ["P571", "P84", "P170"],
+            "stretches": ["P2043"],
             "ceo": ["P169", "P488", "P39"],
             "founder": ["P112"],
             "parent organization": ["P749", "P127", "P355", "P361"],
@@ -243,13 +254,16 @@ class EvidenceRetriever:
         subj_name = subj_ent.get("canonical_name") or claim.get("subject", "")
         predicate = claim.get("predicate", "")
         claim_object = claim.get("object", "")
+        is_location_claim = self._is_location_claim(claim)
 
         if subj_name:
             parts.append(str(subj_name))
         if predicate:
             parts.append(str(predicate))
-        if claim_object:
+        if claim_object and not is_location_claim:
             parts.append(str(claim_object))
+        if is_location_claim:
+            parts.append("location")
 
         claim_text = claim.get("claim_text", "") or ""
         years = re.findall(r"\b(1\d{3}|20\d{2})\b", claim_text)
@@ -271,6 +285,15 @@ class EvidenceRetriever:
                 properties.update(values)
 
         return sorted(properties)
+
+    def _is_location_claim(self, claim: Dict[str, Any]) -> bool:
+        combined = f" {(claim.get('predicate', '') or '').lower()} {(claim.get('claim_text', '') or '').lower()} "
+        if re.search(r"\bis\s+(?:a|an)\s+\w.*\bin\s+[A-Z]", claim.get("claim_text", "")):
+            return False
+        return any(
+            token in combined
+            for token in (" located in ", " situated in ", " headquartered ", " based in ", " is in ", " are in ", " was in ", " were in ")
+        )
 
     def _get_query_direction(self, predicate: str) -> str:
         p = predicate.lower()

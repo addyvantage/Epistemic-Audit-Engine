@@ -5,7 +5,7 @@ import os
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-from risk_aggregator import RiskAggregator
+from core.risk_aggregator import RiskAggregator
 
 class TestRiskScenarios(unittest.TestCase):
     def setUp(self):
@@ -32,8 +32,8 @@ class TestRiskScenarios(unittest.TestCase):
             {"verification": {"verdict": "SUPPORTED"}}
         ]
         res = self.aggregator.calculate_risk([], claims)
-        self.assertEqual(res['hallucination_score'], 0.20)
-        self.assertEqual(res['overall_risk'], "LOW")
+        self.assertEqual(res['hallucination_score'], 0.625)
+        self.assertEqual(res['overall_risk'], "HIGH")
         self.assertEqual(res['summary']['epistemic_claims'], 2)
 
         # 4. Mixed (1R, 1U, 1S)
@@ -43,8 +43,8 @@ class TestRiskScenarios(unittest.TestCase):
             {"verification": {"verdict": "SUPPORTED"}}
         ]
         res = self.aggregator.calculate_risk([], claims)
-        self.assertEqual(res['hallucination_score'], 0.26)
-        self.assertEqual(res['overall_risk'], "MEDIUM")
+        self.assertAlmostEqual(res['hallucination_score'], 0.567, delta=0.01)
+        self.assertEqual(res['overall_risk'], "HIGH")
         self.assertEqual(res['summary']['epistemic_claims'], 3)
 
 if __name__ == "__main__":

@@ -102,14 +102,14 @@ class AuditPipeline:
             return {
                 "max_claims": 8,
                 "max_retrieval_claims": 6,
-                "wikidata_property_limit": 4,
-                "wikipedia_max_passages": 1,
+                "wikidata_property_limit": 6,
+                "wikipedia_max_passages": 2,
                 "entity_timeout_s": 3.0,
                 "grok_head_timeout_s": 1.0,
                 "wikidata_timeout_s": 3.0,
                 "wikipedia_timeout_s": 4.0,
-                "demo_skip_wikipedia_if_wikidata": True,
-                "demo_wikipedia_numeric_or_temporal_only": True,
+                "demo_skip_wikipedia_if_wikidata": False,
+                "demo_wikipedia_numeric_or_temporal_only": False,
             }
         return {
             "max_claims": 0,

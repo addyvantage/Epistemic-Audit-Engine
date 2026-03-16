@@ -47,7 +47,19 @@ class RiskAggregator:
         
         # 5. Small-Sample Saturation Dampening
         if T < 5:
-            raw_score *= (T / 5.0)
+            dampened_score = raw_score * (T / 5.0)
+            severity_floor = 0.0
+
+            # Single-claim or small-sample failures should not collapse to LOW risk.
+            # Refuted claims stay high-risk; unresolved small samples stay at least moderate.
+            if R_count > 0:
+                severity_floor = 0.45 + (0.35 * (R_count / safe_T))
+            elif I_count > 0 and S_count == 0:
+                severity_floor = 0.32 + (0.10 * (I_count / safe_T))
+            elif U_count > 0 and S_count == 0:
+                severity_floor = 0.24 + (0.08 * (U_count / safe_T))
+
+            raw_score = max(dampened_score, severity_floor)
             
         # 6. Clamp + Precision
         hallucination_score = round(max(0.0, min(1.0, raw_score)), 3)

@@ -58,7 +58,18 @@ class ClaimVerifier:
         self.PREDICATE_PROPERTY_HINTS = {
             "headquarters": {"P159", "P131", "P276", "P17"},
             "located in": {"P131", "P276", "P17"},
-            "country": {"P17", "P27"},
+            "is in": {"P131", "P276", "P17"},
+            "are in": {"P131", "P276", "P17"},
+            "was in": {"P131", "P276", "P17"},
+            "were in": {"P131", "P276", "P17"},
+            "capital city": {"P36"},
+            "capital of": {"P36"},
+            "made of": {"P186"},
+            "built by": {"P84", "P170", "P112"},
+            "constructed by": {"P84", "P170"},
+            "built": {"P571", "P84", "P170"},
+            "constructed": {"P571", "P84", "P170"},
+            "stretches": {"P2043"},
             "ceo": {"P169", "P488", "P39"},
             "founder": {"P112"},
             "parent organization": {"P749", "P127", "P355", "P361"},
@@ -90,6 +101,11 @@ class ClaimVerifier:
             "P20": "place of death",
             "P27": "country of citizenship",
             "P577": "publication date",
+            "P36": "capital",
+            "P186": "material used",
+            "P84": "architect",
+            "P170": "creator",
+            "P2043": "length",
         }
 
         self.TEMPORAL_PROPS = {"P569", "P570", "P571", "P577"}
@@ -105,6 +121,9 @@ class ClaimVerifier:
             "HQ": {"P159", "P276", "P131", "P17"},
             "NATIONALITY": {"P27"},
             "OWNERSHIP": {"P127", "P749", "P355", "P361"},
+            "CAPITAL": {"P36"},
+            "MATERIAL": {"P186"},
+            "LENGTH": {"P2043"},
         }
 
     def verify_claims(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -285,6 +304,7 @@ class ClaimVerifier:
                     is_positive_match = self._is_positive_structured_match(
                         claim=claim,
                         prop_id=prop_id,
+                        evidence_item=ev,
                         object_match=o_match,
                         temporal_match=t_match,
                         claim_is_temporal=claim_is_temporal,
@@ -381,6 +401,12 @@ class ClaimVerifier:
                     # Multiple weak supports may upgrade INSUFFICIENT to UNCERTAIN
                     weak_support_count += 1
                     weak_support_total_score += score
+                    if self._textual_support_override(claim, ev, nli_result):
+                        supporting_ids.append(ev.get("evidence_id"))
+                        has_direct_support = True
+                        if max(score, ev.get("score", 0.0), nli_result.get("entailment", 0.0)) > best_support_score:
+                            best_support_score = max(score, ev.get("score", 0.0), nli_result.get("entailment", 0.0))
+                            best_evidence_item = ev
 
         # Predicate-aware structured contradiction pass over all Wikidata evidence
         # (including object-centric retrieval records that may fail strict S+P eligibility).
@@ -612,13 +638,15 @@ class ClaimVerifier:
         if final_verdict == "SUPPORTED" and hallucinations:
              hallucinations = [] # Force clear
 
-        # Evidence Sufficiency Classification (v1.5)
-        # Computes explicit categorization for frontend messaging
-        evidence_sufficiency = self._classify_evidence_sufficiency(evidence, supporting_ids)
-        evidence_summary = self._build_evidence_summary(evidence, supporting_ids)
-
         supporting_ids = [eid for eid in dict.fromkeys(supporting_ids) if eid]
         refuting_ids = [eid for eid in dict.fromkeys(refuting_ids) if eid]
+        verdict_evidence_ids = [eid for eid in dict.fromkeys(supporting_ids + refuting_ids) if eid]
+
+        # Evidence Sufficiency Classification (v1.5)
+        # Computes explicit categorization for frontend messaging using all
+        # verdict-contributing evidence, including contradictions.
+        evidence_sufficiency = self._classify_evidence_sufficiency(evidence, verdict_evidence_ids)
+        evidence_summary = self._build_evidence_summary(evidence, verdict_evidence_ids)
 
         claim["hallucinations"] = hallucinations
         claim["verification"] = {
@@ -692,6 +720,12 @@ class ClaimVerifier:
             facets.add("NONPROFIT")
         if any(k in combined for k in self.OWNERSHIP_KEYWORDS):
             facets.add("OWNERSHIP")
+        if "capital city" in combined or "capital of" in combined:
+            facets.add("CAPITAL")
+        if "made of" in combined or "made primarily of" in combined:
+            facets.add("MATERIAL")
+        if "stretches" in combined or "kilometer" in combined or "kilometre" in combined:
+            facets.add("LENGTH")
         if self.has_temporal_signal(claim):
             facets.add("TEMPORAL_GENERIC")
         return facets
@@ -713,13 +747,19 @@ class ClaimVerifier:
         self,
         claim: Dict[str, Any],
         prop_id: str,
+        evidence_item: Optional[Dict[str, Any]],
         object_match: Optional[bool],
         temporal_match: Optional[bool],
         claim_is_temporal: bool,
     ) -> bool:
         if self.is_temporal_prop(prop_id):
             return bool(object_match is True or (temporal_match is True and claim_is_temporal))
-        return bool(object_match is True)
+        if self.is_location_prop(prop_id):
+            return bool(evidence_item and self._is_place_compatible_with_evidence(claim, evidence_item))
+        return bool(
+            object_match is True
+            or (evidence_item and self._is_canonical_support_compatible(claim, evidence_item))
+        )
 
     def _canonical_override_allowed(self, claim: Dict[str, Any], prop_id: str) -> bool:
         facets = self.extract_claim_facets(claim)
@@ -789,6 +829,9 @@ class ClaimVerifier:
             "NONPROFIT": "non-profit status",
             "NATIONALITY": "nationality",
             "OWNERSHIP": "ownership",
+            "CAPITAL": "capital",
+            "MATERIAL": "material",
+            "LENGTH": "length",
             "TEMPORAL_GENERIC": "temporal detail",
         }
         return labels.get(facet, facet.lower())
@@ -836,6 +879,7 @@ class ClaimVerifier:
             is_positive = self._is_positive_structured_match(
                 claim=claim,
                 prop_id=prop,
+                evidence_item=ev,
                 object_match=o_match,
                 temporal_match=t_match,
                 claim_is_temporal=claim_is_temporal,
@@ -943,6 +987,10 @@ class ClaimVerifier:
             return None
 
         if prop in self.LOCATION_PROPS:
+            if not self._is_strict_location_claim(claim):
+                return None
+            if positive_properties.intersection(self.LOCATION_PROPS):
+                return None
             is_contradiction, detail = self._evaluate_location_contradiction(claim, evidence_item)
             if is_contradiction:
                 return {
@@ -961,6 +1009,21 @@ class ClaimVerifier:
                     "property": prop,
                     "evidence_id": evidence_id,
                 }
+
+        if prop in {"P36", "P186", "P84", "P170", "P112"}:
+            if self._is_canonical_support_compatible(claim, evidence_item):
+                return None
+            object_match = alignment.get("object_match")
+            if object_match is False or claim.get("object_entity", {}).get("resolution_status") in {"RESOLVED", "RESOLVED_SOFT"}:
+                evidence_label = self._resolve_evidence_value_label(evidence_item)
+                claim_value = claim.get("object_entity", {}).get("canonical_name") or claim.get("object", "")
+                if evidence_label and claim_value and self._normalize_text(evidence_label) != self._normalize_text(claim_value):
+                    return {
+                        "reasoning": f"Contradicted by Wikidata {prop_label}: authoritative value is {evidence_label}, not '{claim_value}'.",
+                        "confidence": 0.88,
+                        "property": prop,
+                        "evidence_id": evidence_id,
+                    }
 
         if alignment.get("temporal_match") is False and prop in self.TEMPORAL_PROPS:
             return {
@@ -1028,6 +1091,48 @@ class ClaimVerifier:
 
         return False
 
+    def _is_strict_location_claim(self, claim: Dict[str, Any]) -> bool:
+        predicate = (claim.get("predicate", "") or "").lower().strip()
+        claim_text = (claim.get("claim_text", "") or "").lower()
+        if predicate in {"is in", "are in", "was in", "were in", "stands in", "located in", "situated in", "based in", "headquartered"}:
+            return True
+        if re.search(r"\bis\s+(?:a|an)\s+[^.]{0,80}\bin\b", claim_text):
+            return False
+        return any(token in claim_text for token in [" located in ", " situated in ", " stands in ", " headquartered in ", " based in "])
+
+    def _textual_support_override(
+        self,
+        claim: Dict[str, Any],
+        evidence_item: Dict[str, Any],
+        nli_result: Dict[str, float],
+    ) -> bool:
+        claim_text = (claim.get("claim_text", "") or "").strip()
+        sentence = (evidence_item.get("sentence", "") or evidence_item.get("snippet", "") or "").strip()
+        if not claim_text or not sentence:
+            return False
+
+        similarity = float(evidence_item.get("score", 0.0) or 0.0)
+        entailment = float(nli_result.get("entailment", 0.0) or 0.0)
+        contradiction = float(nli_result.get("contradiction", 0.0) or 0.0)
+        claim_lower = claim_text.lower()
+        sentence_lower = sentence.lower()
+
+        years = self._extract_years(claim_text)
+        if years and not all(year in sentence for year in years):
+            return False
+
+        keywords = [
+            token for token in re.findall(r"[a-z][a-z0-9-]{2,}", claim_lower)
+            if token not in {"the", "and", "with", "that", "from", "into", "over", "have", "has", "was", "were", "are", "is", "its", "their", "city"}
+        ]
+        keyword_hits = sum(1 for token in keywords if token in sentence_lower)
+        keyword_ratio = keyword_hits / max(1, len(keywords))
+
+        return contradiction < 0.25 and (
+            (similarity >= 0.72 and entailment >= 0.45 and keyword_ratio >= 0.45) or
+            (similarity >= 0.62 and entailment >= 0.60 and keyword_ratio >= 0.4)
+        )
+
     def _evaluate_ownership_contradiction(
         self,
         claim: Dict[str, Any],
@@ -1083,11 +1188,17 @@ class ClaimVerifier:
         ]
 
         for candidate in raw_candidates:
-            normalized = self._normalize_text(candidate)
+            normalized = self._normalize_place_text(candidate)
             if normalized:
                 labels.add(normalized)
 
         return qids, labels
+
+    def _normalize_place_text(self, text: str) -> str:
+        normalized = self._normalize_text(text)
+        normalized = re.sub(r"^(in|at|on|inside|within|near)\s+", "", normalized).strip()
+        normalized = re.sub(r"^(the\s+)?(city|country|state|region|capital)\s+of\s+", "", normalized).strip()
+        return normalized
 
     def _resolve_qid_label(self, qid: str) -> str:
         containment = self.wikidata.get_place_containment(qid, max_hops=0)
@@ -1095,6 +1206,15 @@ class ClaimVerifier:
         if labels:
             return labels[0]
         return qid
+
+    def _resolve_evidence_value_label(self, evidence_item: Dict[str, Any]) -> str:
+        value_label = str(evidence_item.get("value_label", "") or "").strip()
+        if value_label:
+            return value_label
+        value = str(evidence_item.get("value", "") or "")
+        if value.startswith("Q"):
+            return self._resolve_qid_label(value)
+        return value
 
     def _normalize_text(self, text: str) -> str:
         return re.sub(r"[^a-z0-9\s]", "", (text or "").lower()).strip()
@@ -1282,7 +1402,7 @@ class ClaimVerifier:
                     "evidence_id": evidence_id,
                     "source": "WIKIDATA",
                     "property": ev.get("property", ""),
-                    "value": str(ev.get("value", "")),
+                    "value": str(ev.get("value_label") or ev.get("value", "")),
                     "snippet": (ev.get("snippet", "") or "")[:150],
                     "url": ev.get("url", "")
                 })

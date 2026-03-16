@@ -31,6 +31,9 @@ class ClaimExtractor:
         # v1.3: Reported Speech & Hedging
         self.REPORTED_SPEECH_LEMMAS = {"state", "report", "claim", "argue", "suggest", "say", "announce", "warn", "predict", "speculate"}
         self.HEDGING_PHRASES = {"some sources", "according to", "it is claimed", "rumors", "allegedly"}
+        self.LOCATION_PREPOSITIONS = {"in", "at", "on", "inside", "within", "near"}
+        self.RELATION_PREPOSITIONS = {"in", "at", "on", "inside", "within", "near", "by", "during", "across", "from", "of"}
+        self.ALLOWED_FACTUAL_PRONOUNS = {"it", "he", "she", "they", "this", "these", "those"}
         
     def extract(self, text: str) -> Dict[str, Any]:
         """
@@ -161,12 +164,23 @@ class ClaimExtractor:
                     obj = child
                     break
             if not obj:
+                prep_candidates = []
                 for child in verb.children:
-                    if child.dep_ == "prep":
-                        for grandchild in child.children:
-                             if grandchild.dep_ == "pobj":
-                                 obj = child 
-                                 break
+                    if child.dep_ in ("prep", "agent"):
+                        prep_candidates.append(child)
+                prep_candidates.sort(
+                    key=lambda token: (
+                        0 if token.dep_ == "agent" or token.text.lower() == "by" else 1,
+                        token.i,
+                    )
+                )
+                for child in prep_candidates:
+                    for grandchild in child.children:
+                        if grandchild.dep_ == "pobj":
+                            obj = child
+                            break
+                    if obj:
+                        break
             
             if subj:
                 extracted_tuples.append((subj, verb, obj))
@@ -198,19 +212,9 @@ class ClaimExtractor:
             min_idx = min(t.idx for t in filtered_tokens)
             max_idx = max(t.idx + len(t) for t in filtered_tokens)
             
-            subj_text = "".join([t.text_with_ws for t in subj_tokens]).strip()
-            verb_text = "".join([t.text_with_ws for t in verb_tokens]).strip()
-            obj_text = "".join([t.text_with_ws for t in obj_tokens]).strip()
-            
-            claim_str = f"{subj_text} {verb_text} {obj_text}".strip()
-            
-            if claim_str in unique_claim_ids:
-                continue
-            unique_claim_ids.add(claim_str)
-            
-            signals = self._compute_linguistic_signals(claim_str, sent.text)
-            id_str = f"{sent_obj['sentence_id']}_{claim_str}"
-            claim_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, id_str))
+            subj_text = self._clean_component_text("".join([t.text_with_ws for t in subj_tokens]).strip())
+            verb_text = self._clean_predicate_text("".join([t.text_with_ws for t in verb_tokens]).strip())
+            obj_text = self._clean_component_text("".join([t.text_with_ws for t in obj_tokens]).strip())
 
             claim_type = "RELATION"
             temporal_predicates = ["launched", "founded", "born", "died"]
@@ -221,74 +225,202 @@ class ClaimExtractor:
                     claim_type = "FACTUAL_ATTRIBUTE"
                 else:
                     claim_type = "EXISTENTIAL"
-            
-            # Fix 2: Contested Claims & v1.3 Hedging
-            epistemic_status = "ASSERTED"
-            
-            # 1. Check for Fragment (v1.3)
-            lower_claim = claim_str.lower()
-            if lower_claim.startswith("that ") or lower_claim.startswith("which ") or lower_claim.startswith("who "):
-                continue # Drop fragment
-            
-            # 2. Check for Hedging/Reported Speech (v1.3)
-            is_hedged = False
-            
-            # Check for reported speech predicate
-            if verb.lemma_ in self.REPORTED_SPEECH_LEMMAS:
-                 claim_type = "META_REPORTED"
-                 epistemic_status = "NON_ASSERTIVE"
-                 is_hedged = True
-                 
-            # Check for hedging terms in SUBJECT (e.g. "Some sources")
-            if any(h in subj_text.lower() for h in ["some sources", "critics", "commentators", "rumors"]):
-                 claim_type = "META_REPORTED"
-                 epistemic_status = "NON_ASSERTIVE"
-                 is_hedged = True
-                 
-            if self._is_contested(subj_text, verb.lemma_):
-                epistemic_status = "CONTESTED" # Contested is a subtype of Asserted/Non-Asserted? 
-                # Prompts says: "MUST be classified as META_REPORTED / NON_ASSERTIVE"
-                # If contested, it's inherently reported? "Critics argue..." -> Yes.
-                if claim_type != "META_REPORTED":
-                     epistemic_status = "CONTESTED" # Keep contested if not full meta
-            
-            if is_hedged:
-                 epistemic_status = "NON_ASSERTIVE"
 
-            claim_entry = {
-                "claim_id": claim_id,
-                "sentence_id": sent_obj["sentence_id"],
-                "claim_text": claim_str,
-                "subject": subj_text,
-                "predicate": verb_text,
-                "object": obj_text,
-                "confidence_linguistic": signals,
-                "claim_type": claim_type,
-                "epistemic_status": epistemic_status,
-                "raw_sentence": sent_obj["text"],
-                "is_derived": False,
-                "start_char": min_idx,
-                "end_char": max_idx,
-                "sentence_index": sent_obj["sentence_id"],
-                "span": {
-                    "start": min_idx,
-                    "end": max_idx,
-                    "sentence_index": sent_obj["sentence_id"]
-                }
-            }
-            claims.append(claim_entry)
+            predicate_text, object_text, claim_type = self._normalize_relation_components(
+                verb=verb,
+                verb_text=verb_text,
+                obj=obj,
+                obj_text=obj_text,
+                claim_type=claim_type,
+            )
+            object_variants = self._split_coordinate_objects(obj) or [object_text]
 
-            temporal_claim = self._create_temporal_claim(subj, verb, obj, sent, claim_id, sent_obj["sentence_id"], sent_obj["text"])
+            parent_claim_id: Optional[str] = None
+            for object_variant in object_variants:
+                object_variant = self._clean_component_text(object_variant)
+                claim_entry = self._build_claim_entry(
+                    subj_text=subj_text,
+                    predicate_text=predicate_text,
+                    object_text=object_variant,
+                    claim_type=claim_type,
+                    verb=verb,
+                    sent=sent,
+                    sent_obj=sent_obj,
+                    min_idx=min_idx,
+                    max_idx=max_idx,
+                )
+                if not claim_entry:
+                    continue
+                if claim_entry["claim_text"] in unique_claim_ids:
+                    continue
+                unique_claim_ids.add(claim_entry["claim_text"])
+                if parent_claim_id is None:
+                    parent_claim_id = claim_entry["claim_id"]
+                claims.append(claim_entry)
+
+            if parent_claim_id is None:
+                parent_basis = f"{sent_obj['sentence_id']}::{subj_text}::{predicate_text}::{object_text}"
+                parent_claim_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, parent_basis))
+
+            temporal_claim = self._create_temporal_claim(subj, verb, obj, sent, parent_claim_id, sent_obj["sentence_id"], sent_obj["text"])
             if temporal_claim:
                  claims.append(temporal_claim)
 
             # v1.6: Compound Claim Decomposition - Location Claims
             # For "born in YEAR in PLACE" patterns, also extract the location claim
-            location_claim = self._create_location_claim(subj, verb, obj, sent, claim_id, sent_obj["sentence_id"], sent_obj["text"])
+            location_claim = self._create_location_claim(subj, verb, obj, sent, parent_claim_id, sent_obj["sentence_id"], sent_obj["text"])
             if location_claim:
                  claims.append(location_claim)
 
+            agent_claim = None
+            if not obj or obj.dep_ != "agent":
+                agent_claim = self._create_agent_claim(subj, verb, sent, parent_claim_id, sent_obj["sentence_id"], sent_obj["text"])
+            if agent_claim:
+                 claims.append(agent_claim)
+
         return claims
+
+    def _build_claim_entry(
+        self,
+        subj_text: str,
+        predicate_text: str,
+        object_text: str,
+        claim_type: str,
+        verb,
+        sent,
+        sent_obj: Dict[str, Any],
+        min_idx: int,
+        max_idx: int,
+    ) -> Optional[Dict[str, Any]]:
+        predicate_text = self._clean_predicate_text(predicate_text)
+        object_text = self._clean_component_text(object_text)
+        claim_str = f"{subj_text} {predicate_text} {object_text}".strip()
+        claim_str = self._clean_claim_text(claim_str)
+        object_text = self._extract_object_from_claim_text(claim_str, subj_text, predicate_text)
+
+        if not claim_str or not object_text:
+            return None
+
+        lower_claim = claim_str.lower()
+        if lower_claim.startswith(("that ", "which ", "who ")):
+            return None
+
+        signals = self._compute_linguistic_signals(claim_str, sent.text)
+        id_str = f"{sent_obj['sentence_id']}_{claim_str}"
+        claim_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, id_str))
+
+        epistemic_status = "ASSERTED"
+        is_hedged = False
+        if verb.lemma_ in self.REPORTED_SPEECH_LEMMAS:
+            claim_type = "META_REPORTED"
+            epistemic_status = "NON_ASSERTIVE"
+            is_hedged = True
+
+        if any(h in subj_text.lower() for h in ["some sources", "critics", "commentators", "rumors"]):
+            claim_type = "META_REPORTED"
+            epistemic_status = "NON_ASSERTIVE"
+            is_hedged = True
+
+        if self._is_contested(subj_text, verb.lemma_):
+            epistemic_status = "CONTESTED"
+
+        if is_hedged:
+            epistemic_status = "NON_ASSERTIVE"
+
+        return {
+            "claim_id": claim_id,
+            "sentence_id": sent_obj["sentence_id"],
+            "claim_text": claim_str,
+            "subject": subj_text,
+            "predicate": predicate_text,
+            "object": object_text,
+            "confidence_linguistic": signals,
+            "claim_type": claim_type,
+            "epistemic_status": epistemic_status,
+            "raw_sentence": sent_obj["text"],
+            "is_derived": False,
+            "start_char": min_idx,
+            "end_char": max_idx,
+            "sentence_index": sent_obj["sentence_id"],
+            "span": {
+                "start": min_idx,
+                "end": max_idx,
+                "sentence_index": sent_obj["sentence_id"]
+            }
+        }
+
+    def _normalize_relation_components(
+        self,
+        verb,
+        verb_text: str,
+        obj,
+        obj_text: str,
+        claim_type: str,
+    ) -> (str, str, str):
+        """
+        Normalize prepositional claims so the relation is preserved in the
+        predicate while the object is reduced to the entity text.
+
+        Example:
+        - predicate "is", object "in Belgium" -> predicate "is in", object "Belgium"
+        """
+        predicate_text = verb_text
+        object_text = obj_text
+        normalized_type = claim_type
+
+        if not obj or obj.dep_ not in {"prep", "agent"}:
+            return predicate_text, object_text, normalized_type
+
+        prep = obj.text.lower().strip()
+        if prep not in self.RELATION_PREPOSITIONS:
+            return predicate_text, object_text, normalized_type
+
+        if prep == "of":
+            material_match = re.match(r"^(?:(primarily|mostly|mainly)\s+)?of\s+(.+)$", obj_text, flags=re.IGNORECASE)
+            if material_match:
+                intensifier = (material_match.group(1) or "").strip()
+                object_text = material_match.group(2).strip()
+                predicate_text = f"{verb_text} {intensifier + ' ' if intensifier else ''}of".strip()
+            else:
+                object_text = re.sub(rf"^{re.escape(prep)}\s+", "", obj_text, flags=re.IGNORECASE).strip()
+                predicate_text = f"{verb_text} {prep}".strip()
+        else:
+            object_text = re.sub(rf"^{re.escape(prep)}\s+", "", obj_text, flags=re.IGNORECASE).strip()
+            predicate_text = f"{verb_text} {prep}".strip()
+        if not object_text:
+            return predicate_text, obj_text, normalized_type
+        if normalized_type == "EXISTENTIAL":
+            normalized_type = "RELATION"
+        return predicate_text, object_text, normalized_type
+
+    def _split_coordinate_objects(self, obj) -> List[str]:
+        if not obj or obj.dep_ == "prep":
+            return []
+
+        conjuncts = [obj] + [child for child in obj.children if child.dep_ == "conj"]
+        if len(conjuncts) <= 1:
+            return []
+
+        variants: List[str] = []
+        for node in conjuncts:
+            text = self._clean_component_text(self._get_coordinate_phrase(node))
+            if text:
+                variants.append(text)
+        return variants
+
+    def _get_coordinate_phrase(self, token) -> str:
+        tokens = []
+        pruned = {"cc", "conj", "punct", "relcl", "advcl", "parataxis"}
+
+        def recurse(tok):
+            tokens.append(tok)
+            for child in tok.children:
+                if child.dep_ not in pruned:
+                    recurse(child)
+
+        recurse(token)
+        tokens.sort(key=lambda t: t.i)
+        return "".join(t.text_with_ws for t in tokens).strip()
 
     def _is_contested(self, subj_text: str, verb_lemma: str) -> bool:
         """Fix 2: Detect explicitly contested claims"""
@@ -334,9 +466,19 @@ class ClaimExtractor:
         Validates claim candidates to reject pronouns, modals, and non-falsifiable statements.
         Also implements strict evaluative filtering.
         """
-        # 1. Subject Constraint: No pronouns
+        # 1. Subject Constraint: Allow concrete anaphora, reject vague expletive-only claims.
         if subj.pos_ == "PRON":
-            return False
+            pronoun = subj.text.lower().strip()
+            if pronoun not in self.ALLOWED_FACTUAL_PRONOUNS:
+                return False
+            if verb.lemma_.lower() == "be" and obj:
+                obj_text = self._get_full_subtree_text(obj).lower()
+                has_concrete_anchor = any(
+                    tok.ent_type_ in {"DATE", "TIME", "CARDINAL", "GPE", "LOC", "ORG", "PERSON"}
+                    for tok in obj.subtree
+                ) or bool(re.search(r"\b(1\d{3}|20\d{2}|\d+)\b", obj_text))
+                if not has_concrete_anchor:
+                    return False
             
         # 2. Predicate Constraint: No empty modals or scaffolding
         verb_lemma = verb.lemma_.lower()
@@ -382,9 +524,38 @@ class ClaimExtractor:
                           measurable = True
                  
                  if not measurable:
+                     has_entity_anchor = any(
+                         t.ent_type_ in ("GPE", "LOC", "FAC", "ORG", "PERSON", "DATE")
+                         for t in obj.subtree
+                     )
+                     if has_entity_anchor:
+                         measurable = True
+                 if not measurable:
                      return False
 
         return True
+
+    def _clean_component_text(self, text: str) -> str:
+        cleaned = re.sub(r"\s+", " ", (text or "")).strip(" \t\n\r,;:")
+        while True:
+            updated = re.sub(r"(?:\s|,)+(and|or|but)$", "", cleaned, flags=re.IGNORECASE).strip(" \t\n\r,;:")
+            updated = re.sub(r"(?:\s|,)+(of|in|at|to|for|with|by|during|across|from)$", "", updated, flags=re.IGNORECASE).strip(" \t\n\r,;:")
+            if updated == cleaned:
+                break
+            cleaned = updated
+        return cleaned
+
+    def _clean_predicate_text(self, text: str) -> str:
+        return re.sub(r"\s+", " ", (text or "")).strip(" \t\n\r,;:")
+
+    def _clean_claim_text(self, text: str) -> str:
+        return self._clean_component_text(re.sub(r"\s+", " ", text or "").strip())
+
+    def _extract_object_from_claim_text(self, claim_text: str, subject_text: str, predicate_text: str) -> str:
+        prefix = f"{subject_text} {predicate_text}".strip()
+        if claim_text.startswith(prefix):
+            return self._clean_component_text(claim_text[len(prefix):].strip())
+        return ""
 
     def _get_verb_phrase(self, verb) -> str:
         """
@@ -429,7 +600,7 @@ class ClaimExtractor:
         new_subj_text = self._get_full_subtree_text(subj)
         subject_was_switched = False
         
-        if obj and obj.dep_ not in ("prep"):
+        if obj and obj.dep_ not in ("prep", "agent"):
              # Switch to object
              new_subj_text = self._get_full_subtree_text(obj)
              subject_was_switched = True
@@ -463,6 +634,53 @@ class ClaimExtractor:
             "is_derived": True,
             "source_claim_id": parent_claim_id,
             "highlight_type": "IMPLICIT_FACT", # Fix 3
+            "start_char": sent.start_char,
+            "end_char": sent.end_char,
+            "sentence_index": sent_id,
+            "span": {
+                "start": sent.start_char,
+                "end": sent.end_char,
+                "sentence_index": sent_id
+            }
+        }
+
+    def _create_agent_claim(self, subj, verb, sent, parent_claim_id, sent_id, raw_sent) -> Optional[Dict[str, Any]]:
+        agent_phrase = None
+        for child in verb.children:
+            if child.dep_ == "agent" or child.text.lower() == "by":
+                for grand in child.children:
+                    if grand.dep_ == "pobj":
+                        agent_phrase = self._get_full_subtree_text(child)
+                        break
+            if agent_phrase:
+                break
+
+        if not agent_phrase:
+            return None
+
+        subj_text = self._clean_component_text(self._get_full_subtree_text(subj))
+        predicate = self._clean_predicate_text(f"{self._get_verb_phrase(verb)} by")
+        obj_text = self._clean_component_text(re.sub(r"^by\s+", "", agent_phrase, flags=re.IGNORECASE))
+        claim_text = self._clean_claim_text(f"{subj_text} {predicate} {obj_text}")
+        if not subj_text or not obj_text:
+            return None
+
+        id_str = f"{sent_id}_{claim_text}_agent_derived"
+        claim_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, id_str))
+        return {
+            "claim_id": claim_id,
+            "sentence_id": sent_id,
+            "claim_text": claim_text,
+            "subject": subj_text,
+            "predicate": predicate,
+            "object": obj_text,
+            "confidence_linguistic": {"hedging": 0.0, "absolutism": 0.0, "temporal_specificity": 0.0, "modal_strength": 1.0},
+            "claim_type": "RELATION",
+            "epistemic_status": "ASSERTED",
+            "raw_sentence": raw_sent,
+            "is_derived": True,
+            "source_claim_id": parent_claim_id,
+            "highlight_type": "IMPLICIT_FACT",
             "start_char": sent.start_char,
             "end_char": sent.end_char,
             "sentence_index": sent_id,

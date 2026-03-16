@@ -69,6 +69,7 @@ class EntityLinker:
             linked_claim["subject_entity"] = subj_res.to_dict()
             if obj_res:
                 linked_claim["object_entity"] = obj_res.to_dict()
+            linked_claim = self._rewrite_claim_from_coref(linked_claim)
                 
             linked_claims.append(linked_claim)
             
@@ -153,6 +154,12 @@ class EntityLinker:
 
         # 1. Candidate Generation
         candidates = self._fetch_candidates_wikidata(query)
+        if not candidates:
+            singular_query = self._singularize_query(query)
+            if singular_query != query:
+                candidates = self._fetch_candidates_wikidata(singular_query)
+                if candidates:
+                    query = singular_query
         
         if not candidates:
             unresolved = self._create_unresolved(text, "No candidates found")
@@ -246,6 +253,19 @@ class EntityLinker:
                 t = t[len(p):].strip()
         return t
 
+    def _singularize_query(self, query: str) -> str:
+        text = (query or "").strip()
+        if " " in text or len(text) < 4:
+            return text
+        lower = text.lower()
+        if lower.endswith("ies"):
+            return text[:-3] + "y"
+        if lower.endswith("ses"):
+            return text[:-2]
+        if lower.endswith("s") and not lower.endswith("ss"):
+            return text[:-1]
+        return text
+
     def _fetch_candidates_wikidata(self, query: str) -> List[EntityCandidate]:
         """
         Queries Wikidata for candidates.
@@ -309,7 +329,11 @@ class EntityLinker:
             # Penalty for disambiguation pages
             if "disambiguation page" in cand.description.lower():
                 score -= 0.5
-            
+            if any(marker in cand.description.lower() for marker in ["scientific article", "scholarly article", "academic journal article", "published on", "published in"]):
+                score -= 0.45
+            if len(label_lower.split()) > 3:
+                score -= 0.1
+
             # Boost for shorter labels
             if len(label_lower) == len(query_lower):
                 score += 0.1
@@ -425,7 +449,7 @@ class EntityLinker:
             return "PERSON"
         if any(w in desc for w in ["company", "corporation", "organization", "agency"]):
             return "ORG"
-        if any(w in desc for w in ["country", "city", "location", "place", "state", "region"]):
+        if any(w in desc for w in ["country", "city", "location", "place", "state", "region", "tower", "landmark", "monument", "building", "bridge", "wall", "structure", "historic site"]):
             return "LOC"
         if any(w in desc for w in ["officer", "position", "title", "profession", "role", "job"]):
             return "ROLE" # New type
@@ -455,7 +479,45 @@ class EntityLinker:
             # LOC patterns
             "the city", "the country", "the state", "the region",
         ]
-        return text_lower in generic_patterns
+        if text_lower in generic_patterns:
+            return True
+        if text_lower in {"it", "its", "they", "their", "them", "he", "him", "his", "she", "her"}:
+            return True
+        if text_lower.startswith("its ") or text_lower.startswith("their "):
+            return True
+        if text_lower.startswith("the "):
+            token_count = len(re.findall(r"[a-z]+", text_lower))
+            return 2 <= token_count <= 4
+        return False
+
+    def _rewrite_claim_from_coref(self, claim: Dict[str, Any]) -> Dict[str, Any]:
+        subject_entity = claim.get("subject_entity", {}) or {}
+        if subject_entity.get("resolution_status") != "RESOLVED_COREF":
+            return claim
+
+        subject_text = str(claim.get("subject", "") or "").strip()
+        predicate_text = str(claim.get("predicate", "") or "").strip()
+        object_text = str(claim.get("object", "") or "").strip()
+        canonical_name = str(subject_entity.get("canonical_name", "") or "").strip()
+        if not subject_text or not canonical_name:
+            return claim
+
+        lowered = subject_text.lower()
+        rewritten_subject = canonical_name
+        if lowered.startswith("its "):
+            remainder = subject_text[4:].strip()
+            rewritten_subject = f"{remainder} of {canonical_name}" if remainder else canonical_name
+        elif lowered.startswith("their "):
+            remainder = subject_text[6:].strip()
+            rewritten_subject = f"{remainder} of {canonical_name}" if remainder else canonical_name
+        elif lowered in {"it", "they", "them", "he", "him", "his", "she", "her"}:
+            rewritten_subject = canonical_name
+        elif lowered.startswith("the "):
+            rewritten_subject = canonical_name
+
+        claim["subject"] = rewritten_subject
+        claim["claim_text"] = " ".join(part for part in [rewritten_subject, predicate_text, object_text] if part).strip()
+        return claim
 
     def _is_likely_non_entity_object(self, text: str) -> bool:
         t = (text or "").strip()

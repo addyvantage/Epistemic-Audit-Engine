@@ -161,6 +161,43 @@ def _base_claim(claim_text, predicate, obj, claim_type="RELATION"):
 
 
 class TestClaimVerifierFacetReliability(unittest.TestCase):
+    def test_country_in_region_claim_is_not_treated_as_strict_location_contradiction(self):
+        verifier = LightweightClaimVerifier(
+            containment_map={
+                "Q_INDIA": {"qids": ["Q_INDIA", "Q_ASIA"], "labels": ["India", "Asia"]},
+            }
+        )
+        claim = _base_claim("India is a country in Asia.", "is", "a country in Asia", claim_type="RELATION")
+        claim["subject_entity"] = {
+            "resolution_status": "RESOLVED",
+            "entity_id": "Q_INDIA",
+            "canonical_name": "India",
+        }
+        claim["object_entity"] = {
+            "resolution_status": "UNRESOLVED",
+            "entity_id": "",
+            "canonical_name": "",
+            "text": "a country in Asia",
+        }
+        claim["evidence"]["wikidata"] = [
+            {
+                "source": "WIKIDATA",
+                "entity_id": "Q_INDIA",
+                "property": "P17",
+                "value": "Q_INDIA",
+                "evidence_id": "wd-p17-india",
+                "alignment": {
+                    "subject_match": True,
+                    "predicate_match": True,
+                    "object_match": False,
+                    "temporal_match": None,
+                },
+            }
+        ]
+
+        out = verifier._verify_single_claim(claim)
+        self.assertNotEqual(out["verification"]["verdict"], "REFUTED")
+
     def test_non_temporal_claim_is_not_supported_by_p571_only(self):
         verifier = LightweightClaimVerifier()
         claim = _base_claim(
@@ -248,6 +285,118 @@ class TestClaimVerifierFacetReliability(unittest.TestCase):
         self.assertEqual(out["verification"]["verdict"], "SUPPORTED")
         self.assertEqual(out["verification"]["facet_status"]["HQ"], "SUPPORTED")
 
+    def test_generic_location_claim_supported_via_place_containment(self):
+        verifier = LightweightClaimVerifier(
+            containment_map={
+                "Q_PARIS": {
+                    "qids": ["Q_PARIS", "Q_FRANCE"],
+                    "labels": ["Paris", "France"],
+                },
+                "Q_BELGIUM": {
+                    "qids": ["Q_BELGIUM"],
+                    "labels": ["Belgium"],
+                },
+            }
+        )
+        claim = _base_claim(
+            "Eiffel Tower is in Paris.",
+            "is in",
+            "Paris",
+            claim_type="RELATION",
+        )
+        claim["subject_entity"]["canonical_name"] = "Eiffel Tower"
+        claim["object_entity"] = {
+            "resolution_status": "RESOLVED_SOFT",
+            "entity_id": "Q_PARIS",
+            "canonical_name": "Paris",
+            "text": "Paris",
+        }
+        claim["evidence"]["wikidata"] = [
+            {
+                "source": "WIKIDATA",
+                "entity_id": "Q243",
+                "property": "P131",
+                "value": "Q_PARIS",
+                "evidence_id": "wd-p131-paris",
+                "alignment": {
+                    "subject_match": True,
+                    "predicate_match": True,
+                    "object_match": False,
+                    "temporal_match": None,
+                },
+            },
+            {
+                "source": "WIKIDATA",
+                "entity_id": "Q243",
+                "property": "P17",
+                "value": "Q_FRANCE",
+                "evidence_id": "wd-p17-france",
+                "alignment": {
+                    "subject_match": True,
+                    "predicate_match": True,
+                    "object_match": False,
+                    "temporal_match": None,
+                },
+            },
+        ]
+
+        out = verifier._verify_single_claim(claim)
+        self.assertEqual(out["verification"]["verdict"], "SUPPORTED")
+        self.assertIn("wd-p131-paris", out["verification"]["used_evidence_ids"])
+        self.assertEqual(out["verification"]["evidence_summary"]["wikidata"]["used"], 1)
+
+    def test_generic_location_claim_refuted_and_surfaces_contradiction_evidence(self):
+        verifier = LightweightClaimVerifier(
+            containment_map={
+                "Q_PARIS": {
+                    "qids": ["Q_PARIS", "Q_FRANCE"],
+                    "labels": ["Paris", "France"],
+                },
+                "Q_BELGIUM": {
+                    "qids": ["Q_BELGIUM"],
+                    "labels": ["Belgium"],
+                },
+            }
+        )
+        claim = _base_claim(
+            "Eiffel Tower is in Belgium.",
+            "is in",
+            "Belgium",
+            claim_type="RELATION",
+        )
+        claim["subject_entity"]["canonical_name"] = "Eiffel Tower"
+        claim["object_entity"] = {
+            "resolution_status": "RESOLVED_SOFT",
+            "entity_id": "Q_BELGIUM",
+            "canonical_name": "Belgium",
+            "text": "Belgium",
+        }
+        claim["evidence"]["wikidata"] = [
+            {
+                "source": "WIKIDATA",
+                "entity_id": "Q243",
+                "property": "P131",
+                "value": "Q_PARIS",
+                "snippet": "Eiffel Tower [P131] is Q_PARIS.",
+                "url": "https://www.wikidata.org/wiki/Q243#P131",
+                "evidence_id": "wd-p131-paris",
+                "alignment": {
+                    "subject_match": True,
+                    "predicate_match": True,
+                    "object_match": False,
+                    "temporal_match": None,
+                },
+            }
+        ]
+
+        out = verifier._verify_single_claim(claim)
+        self.assertEqual(out["verification"]["verdict"], "REFUTED")
+        self.assertIn("wd-p131-paris", out["verification"]["contradicted_by"])
+        self.assertEqual(out["verification"]["used_evidence_ids"], [])
+        self.assertEqual(out["verification"]["evidence_sufficiency"], "ES_VERIFIED")
+        self.assertEqual(out["verification"]["evidence_summary"]["wikidata"]["used"], 1)
+        self.assertIn("Paris", out["verification"]["reasoning"])
+
     def test_evidence_summary_deduplicates_same_evidence_id(self):
         verifier = LightweightClaimVerifier()
         evidence = {
@@ -262,6 +411,20 @@ class TestClaimVerifierFacetReliability(unittest.TestCase):
         self.assertEqual(summary["wikidata"]["used"], 1)
         self.assertEqual(len(summary["wikidata"]["used_items"]), 1)
         self.assertEqual(summary["wikidata"]["used_items"][0]["evidence_id"], "dup-eid")
+
+    def test_place_candidate_normalization_strips_leading_preposition(self):
+        verifier = LightweightClaimVerifier()
+        claim = _base_claim("Eiffel Tower is in Belgium.", "is", "in Belgium", claim_type="RELATION")
+        claim["object_entity"] = {
+            "resolution_status": "UNRESOLVED",
+            "entity_id": "",
+            "canonical_name": "",
+            "text": "in Belgium",
+        }
+
+        qids, labels = verifier._extract_claim_place_candidates(claim)
+        self.assertEqual(qids, set())
+        self.assertIn("belgium", labels)
 
 
 if __name__ == "__main__":

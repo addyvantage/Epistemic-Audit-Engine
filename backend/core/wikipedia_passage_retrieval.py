@@ -174,6 +174,7 @@ class WikipediaPassageRetriever:
         root = soup.find("div", class_="mw-parser-output") or soup
 
         current_anchor = None
+        paragraph_index = 0
         for child in root.children:
             name = getattr(child, "name", None)
             if not name:
@@ -189,7 +190,7 @@ class WikipediaPassageRetriever:
                 continue
 
             paragraph = " ".join(child.stripped_strings)
-            paragraph = self._clean_text(paragraph)
+            paragraph = self._strip_pronunciation_noise(self._clean_text(paragraph))
             if len(paragraph) < 40:
                 continue
 
@@ -200,13 +201,16 @@ class WikipediaPassageRetriever:
                 records.append({
                     "sentence": sentence,
                     "anchor": current_anchor,
+                    "paragraph_index": paragraph_index,
                 })
+            paragraph_index += 1
 
         return records
 
     def _extract_with_regex(self, html: str) -> List[Dict[str, Any]]:
         records: List[Dict[str, Any]] = []
         current_anchor = None
+        paragraph_index = 0
 
         for match in re.finditer(r"<(h[2-4]|p)\b[^>]*>(.*?)</\1>", html, flags=re.IGNORECASE | re.DOTALL):
             tag_name = (match.group(1) or "").lower()
@@ -218,7 +222,7 @@ class WikipediaPassageRetriever:
                     current_anchor = unescape(anchor_match.group(1))
                 continue
 
-            text = self._clean_text(re.sub(r"<[^>]+>", " ", body))
+            text = self._strip_pronunciation_noise(self._clean_text(re.sub(r"<[^>]+>", " ", body)))
             if len(text) < 40:
                 continue
 
@@ -229,7 +233,9 @@ class WikipediaPassageRetriever:
                 records.append({
                     "sentence": sentence,
                     "anchor": current_anchor,
+                    "paragraph_index": paragraph_index,
                 })
+            paragraph_index += 1
 
         return records
 
@@ -241,6 +247,7 @@ class WikipediaPassageRetriever:
 
     def _score_sentences(self, records: List[Dict[str, Any]], claim_text: str) -> List[Dict[str, Any]]:
         features = self._extract_claim_features(claim_text)
+        is_location_claim = self._is_location_claim(claim_text)
         semantic_scores = [0.0] * len(records)
 
         if self.model and cosine_similarity and records:
@@ -255,6 +262,7 @@ class WikipediaPassageRetriever:
         for idx, record in enumerate(records):
             sentence = record.get("sentence", "")
             sentence_lower = sentence.lower()
+            has_location_entity = False
 
             keyword_hits = [kw for kw in features["keywords"] if kw in sentence_lower]
             year_hits = [year for year in features["years"] if year in sentence]
@@ -264,6 +272,18 @@ class WikipediaPassageRetriever:
             semantic_score = semantic_scores[idx] if idx < len(semantic_scores) else 0.0
 
             score = 0.55 * keyword_score + 0.30 * semantic_score
+            paragraph_index = int(record.get("paragraph_index", 99) or 99)
+            if paragraph_index == 0:
+                score += 0.10
+            elif paragraph_index == 1:
+                score += 0.04
+
+            if is_location_claim:
+                has_location_entity = self._sentence_has_location_entity(sentence)
+                if has_location_entity:
+                    score += 0.14
+                if any(token in sentence_lower for token in (" located ", " country ", " city ", " capital ")):
+                    score += 0.08
             if year_hits:
                 score += 0.12
             if number_hits:
@@ -278,6 +298,7 @@ class WikipediaPassageRetriever:
                 "years": year_hits,
                 "numbers": number_hits,
             }
+            enriched["location_entity"] = has_location_entity
             scored.append(enriched)
 
         scored.sort(key=lambda x: x.get("score", 0.0), reverse=True)
@@ -286,6 +307,18 @@ class WikipediaPassageRetriever:
     def _select_top_sentences(self, scored: List[Dict[str, Any]], max_passages: int = 2) -> List[Dict[str, Any]]:
         selected: List[Dict[str, Any]] = []
         seen_sentences = set()
+
+        lead_location = next(
+            (
+                record for record in scored
+                if int(record.get("paragraph_index", 99) or 99) == 0
+                and record.get("location_entity") is True
+            ),
+            None,
+        )
+        if lead_location:
+            selected.append(lead_location)
+            seen_sentences.add(lead_location.get("sentence", ""))
 
         for record in scored:
             if len(selected) >= max_passages:
@@ -406,6 +439,32 @@ class WikipediaPassageRetriever:
         text = unescape(text or "")
         text = re.sub(r"\s+", " ", text)
         return text.strip()
+
+    def _strip_pronunciation_noise(self, text: str) -> str:
+        def replace(match: re.Match[str]) -> str:
+            inner = match.group(1) or ""
+            lowered = inner.lower()
+            if "/" in inner or "ⓘ" in inner or "french :" in lowered or "pronunciation" in lowered:
+                return ""
+            return f"({inner})"
+
+        return re.sub(r"\(([^)]{0,200})\)", replace, text)
+
+    def _is_location_claim(self, claim_text: str) -> bool:
+        combined = f" {str(claim_text or '').lower()} "
+        return any(
+            token in combined
+            for token in (" located in ", " situated in ", " headquartered ", " based in ", " is in ", " are in ", " was in ", " were in ")
+        )
+
+    def _sentence_has_location_entity(self, sentence: str) -> bool:
+        if not self.nlp:
+            return False
+        try:
+            doc = self.nlp(sentence)
+        except Exception:
+            return False
+        return any(ent.label_ in {"GPE", "LOC", "FAC"} for ent in doc.ents)
 
     def _clip_words(self, sentence: str, max_words: int = 60) -> str:
         words = sentence.split()

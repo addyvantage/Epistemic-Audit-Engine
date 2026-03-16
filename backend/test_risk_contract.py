@@ -5,7 +5,7 @@ import os
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-from risk_aggregator import RiskAggregator
+from core.risk_aggregator import RiskAggregator
 
 class TestRiskContract(unittest.TestCase):
     def setUp(self):

@@ -73,6 +73,22 @@ class PropertyMapper:
             "located": ["P131", "P276", "P17"],  # admin terr, location, country
             "situated": ["P131", "P276"],        # admin terr, location
             "capital": ["P36"],                  # capital
+            "capital city": ["P36"],             # capital city
+            "is in": ["P131", "P276", "P17"],    # copular location claim
+            "are in": ["P131", "P276", "P17"],
+            "was in": ["P131", "P276", "P17"],
+            "were in": ["P131", "P276", "P17"],
+            "is at": ["P276", "P131", "P17"],
+            "was at": ["P276", "P131", "P17"],
+            "stands in": ["P131", "P276", "P17"],
+            "made of": ["P186"],
+            "made primarily of": ["P186"],
+            "built by": ["P84", "P170", "P112"],
+            "constructed by": ["P84", "P170"],
+            "built": ["P571", "P84", "P170"],
+            "constructed": ["P571", "P84", "P170"],
+            "stretches": ["P2043"],
+            "length": ["P2043"],
 
             # === IDENTITY/CLASSIFICATION ===
             "is": ["P31", "P279"],       # instance of, subclass of

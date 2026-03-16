@@ -41,8 +41,14 @@ class TestClaimExtractor(unittest.TestCase):
         # 2. Pronoun subject validation
         text2 = "He was a genius."
         result2 = self.extractor.extract(text2)
-        # Should be empty because subject is PRON
+        # Should still be empty because the pronoun claim is vague/evaluative.
         self.assertEqual(len(result2["claims"]), 0)
+
+        text3 = "It was built in 1889 by Gustave Eiffel."
+        result3 = self.extractor.extract(text3)
+        texts3 = [c["claim_text"] for c in result3["claims"]]
+        self.assertIn("It was built by Gustave Eiffel", texts3)
+        self.assertIn("It was built in 1889", texts3)
 
     def test_subtree_reconstruction(self):
         text = "Steve Jobs did not invent the iPhone."
@@ -82,7 +88,48 @@ class TestClaimExtractor(unittest.TestCase):
         # Should be "Apple was founded in 1976"
         self.assertIn("Apple was founded", derived["claim_text"])
         self.assertEqual(derived["subject"], "Apple")
-        
+
+    def test_copular_location_claim_normalization(self):
+        text = "Eiffel Tower is in Belgium."
+        result = self.extractor.extract(text)
+        self.assertGreater(len(result["claims"]), 0)
+
+        claim = result["claims"][0]
+        self.assertEqual(claim["claim_text"], "Eiffel Tower is in Belgium")
+        self.assertEqual(claim["predicate"], "is in")
+        self.assertEqual(claim["object"], "Belgium")
+        self.assertEqual(claim["claim_type"], "RELATION")
+
+    def test_prepositional_birth_claim_normalization(self):
+        text = "Albert Einstein was born in Germany."
+        result = self.extractor.extract(text)
+        self.assertGreater(len(result["claims"]), 0)
+
+        claim = result["claims"][0]
+        self.assertIn("born in", claim["predicate"])
+        self.assertEqual(claim["object"], "Germany")
+
+    def test_coordinate_object_claims_are_split_cleanly(self):
+        text = "Octopuses have three hearts and blue blood, which helps them survive in deep ocean environments."
+        result = self.extractor.extract(text)
+        texts = [c["claim_text"] for c in result["claims"]]
+        self.assertEqual(texts, ["Octopuses have three hearts", "Octopuses have blue blood"])
+        self.assertTrue(all(not text.endswith(",") for text in texts))
+
+    def test_compound_sentence_claims_drop_dangling_conjunctions(self):
+        text = "India is a country in Asia and its capital city is New Delhi."
+        result = self.extractor.extract(text)
+        texts = [c["claim_text"] for c in result["claims"]]
+        self.assertIn("India is a country in Asia", texts)
+        self.assertIn("its capital city is New Delhi", texts)
+        self.assertTrue(all(not text.endswith(" and") for text in texts))
+
+    def test_material_claim_normalization_keeps_material_object_clean(self):
+        text = "The tower is made primarily of wood."
+        result = self.extractor.extract(text)
+        self.assertEqual(result["claims"][0]["predicate"], "is made primarily of")
+        self.assertEqual(result["claims"][0]["object"], "wood")
+
     def test_determinism(self):
         text = "The earth rotates around the sun."
         res1 = self.extractor.extract(text)
