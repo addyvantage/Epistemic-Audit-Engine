@@ -1,6 +1,12 @@
+type FetchWithRetryRequestInit = RequestInit & {
+    timeoutMs?: number
+}
+
 function isRetryableNetworkError(err: any): boolean {
     return (
         err?.cause?.code === 'ECONNREFUSED' ||
+        err?.name === 'AbortError' ||
+        err?.message?.includes?.('timed out') ||
         err?.message?.includes?.('fetch failed') ||
         err?.message === 'Service Unavailable'
     )
@@ -12,23 +18,66 @@ function jitteredDelayMs(baseMs: number): number {
     return Math.max(0, Math.round(capped * jitterFactor))
 }
 
-export async function fetchWithRetry(url: string, options: RequestInit = {}, retries = 5, backoff = 300): Promise<Response> {
+function withRequestTimeout(options: FetchWithRetryRequestInit): {
+    fetchOptions: RequestInit
+    cleanup: () => void
+} {
+    const { timeoutMs, signal, ...fetchOptions } = options
+    if (!timeoutMs || timeoutMs <= 0) {
+        return {
+            fetchOptions: { ...fetchOptions, signal },
+            cleanup: () => undefined,
+        }
+    }
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => {
+        controller.abort(new Error(`Request timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+
+    const abortFromParent = () => {
+        controller.abort(signal?.reason)
+    }
+
+    if (signal) {
+        if (signal.aborted) {
+            abortFromParent()
+        } else {
+            signal.addEventListener('abort', abortFromParent, { once: true })
+        }
+    }
+
+    return {
+        fetchOptions: { ...fetchOptions, signal: controller.signal },
+        cleanup: () => {
+            clearTimeout(timeoutId)
+            signal?.removeEventListener?.('abort', abortFromParent)
+        },
+    }
+}
+
+export async function fetchWithRetry(url: string, options: FetchWithRetryRequestInit = {}, retries = 5, backoff = 300): Promise<Response> {
     let attempt = 0
     let delayMs = Math.max(0, backoff)
     let lastError: any = null
 
     while (attempt <= retries) {
+        const { fetchOptions, cleanup } = withRequestTimeout(options)
         try {
-            const res = await fetch(url, options)
+            const res = await fetch(url, fetchOptions)
             if (res.status !== 503) {
+                cleanup()
                 return res
             }
             lastError = new Error('Service Unavailable')
         } catch (err: any) {
             if (!isRetryableNetworkError(err)) {
+                cleanup()
                 throw err
             }
             lastError = err
+        } finally {
+            cleanup()
         }
 
         if (attempt === retries) {

@@ -133,6 +133,16 @@ EPI_SYNTH_MODE=demo EPI_SYNTH_RUNS=500 bash scripts/run_research.sh
 - **Backend**: `uvicorn app:app --host 0.0.0.0 --port 8000`
 - **Frontend**: `npm start` (port 3000)
 
+## Local Development
+
+- **Backend**: `cd backend && PYTHONPATH=$PWD .venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8000`
+- **Frontend**: `cd frontend && npm run dev`
+- **Run both**: `npm run dev` from the repo root
+- **Frontend env**: copy `frontend/.env.example` to `frontend/.env.local` and set `BACKEND_URL=http://127.0.0.1:8000`
+- **Expected ports**: frontend on `http://127.0.0.1:3000`, backend on `http://127.0.0.1:8000`
+
+The frontend health proxy calls the backend `GET /health` endpoint and fails fast with a clear `503` JSON payload when the backend is unavailable.
+
 ---
 
 ## Integration Use Case

@@ -2,19 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-@font-face {
-    font-family: 'Satoshi';
-    src: url('/fonts/Satoshi-Variable.woff2') format('woff2');
-    font-weight: 300 600;
-    /* Restricted range for Slim aesthetic */
-    font-display: swap;
-    font-style: normal;
-}
-
-
-
 :root {
-    --font-primary: "Satoshi", system-ui, sans-serif;
+    --font-primary: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
 
